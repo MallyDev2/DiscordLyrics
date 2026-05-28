@@ -53,6 +53,7 @@ The installer:
 
 Direct PowerShell install:
 
+
 ```powershell
 irm https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.ps1 -OutFile "$env:TEMP\DiscordLyrics-Installer.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\DiscordLyrics-Installer.ps1"
 ```
