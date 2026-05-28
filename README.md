@@ -82,6 +82,15 @@ Fallback format:
 Song - Artist
 ```
 
+## Troubleshooting
+
+If lyrics do not appear right away, check these first:
+
+- Spotify must be connected to Discord and visible as your activity.
+- The track title and artist should match the public LRCLIB listing.
+- Reload Discord after enabling or updating the plugin.
+- Wait a few seconds after changing songs so the lyric lookup can refresh.
+
 ## Project Package
 
 DiscordLyrics is also published as a GitHub npm package for clean version tracking and repo package visibility.
