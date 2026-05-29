@@ -5,7 +5,7 @@
 <h1 align="center">DiscordLyrics</h1>
 
 <p align="center">
-  <strong>A polished Spotify lyric status plugin for Discord, built by MallyDev2.</strong>
+  <strong>Just another Spotify lyric status changer</strong>
 </p>
 
 <p align="center">
