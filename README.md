@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/discordlyrics-bg.png" alt="DiscordLyrics by MallyDev2" width="100%">
+  <img src="assets/angel-wallpaper.jpg" alt="DiscordLyrics by MallyDev2" width="100%">
 </p>
 
 <h1 align="center">DiscordLyrics</h1>
