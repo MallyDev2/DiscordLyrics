@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="IMG_9011.png" alt="DiscordLyrics by MallyDev2" width="100%">
+  <img src="IMG_9011.jpeg" alt="DiscordLyrics by MallyDev2" width="100%">
 </p>
 
 <h1 align="center">DiscordLyrics</h1>
