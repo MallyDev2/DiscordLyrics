@@ -157,33 +157,16 @@ The repository includes a GitHub-ready preview image at:
 assets/social-preview.jpg
 ```
 
-Use that image in the repository social preview setting so links shared to Discord show the DiscordLyrics banner.
-
-## Wiki
-
-Wiki source pages are mirrored in `docs/wiki/` so project docs stay versioned with the repo.
-
-## Troubleshooting
-
-| Issue | Fix |
-| --- | --- |
-| Lyrics do not show | Make sure Spotify is connected to Discord and visible as activity. |
-| Song shows but lyric does not | The song may not have synced lyrics in LRCLIB yet. |
-| Vencord plugin missing | Confirm the folder path is `Vencord/src/userplugins/spotifyLyricsStatus`. |
-| Status updates slowly | Discord can rate-limit custom status changes, so the plugin avoids unnecessary updates. |
-
 ## Compatibility
 
 | Platform | Status |
 | --- | --- |
 | BetterDiscord | Supported |
 | Vencord userplugin | Supported |
-| Spotify activity | Required |
-| LRCLIB synced lyrics | Used when available |
 
 ## Support
 
-If DiscordLyrics helps you, you can support MallyDev2 through GitHub Sponsors:
+If you enjoy discordlyrics, you can support me through GitHub Sponsors:
 
 https://github.com/sponsors/MallyDev2
 
