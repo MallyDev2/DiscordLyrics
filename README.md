@@ -24,8 +24,6 @@ DiscordLyrics syncs Spotify lyrics from currently playing song to your custom st
 ## Highlights
 
 - Live lyric status from Spotify playback.
-- BetterDiscord plugin build.
-- Vencord userplugin build.
 - LRCLIB synced lyric lookup.
 - Pause fallback using the last detected track.
 - Rate-conscious status updates.
