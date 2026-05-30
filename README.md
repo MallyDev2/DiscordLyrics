@@ -149,14 +149,6 @@ DiscordLyrics/
   assets/
 ```
 
-## Social Preview
-
-The repository includes a GitHub-ready preview image at:
-
-```text
-assets/social-preview.jpg
-```
-
 ## Compatibility
 
 | Platform | Status |
