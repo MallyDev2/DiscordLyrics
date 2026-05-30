@@ -19,7 +19,7 @@
   <img alt="Spotify lyrics" src="https://img.shields.io/badge/Spotify-Lyrics-ffffff?style=for-the-badge&labelColor=101014&color=1db954">
 </p>
 
-DiscordLyrics syncs Spotify playback into your Discord custom status. When synced lyrics are available, your status follows the current lyric line. When lyrics are unavailable, it falls back to the current song so your profile still looks clean instead of empty.
+DiscordLyrics syncs Spotify lyrics from currently playing song to your custom status. By doing this it is a breach of discord tos for self botting so please use resposibly.
 
 ## Highlights
 
