@@ -31,6 +31,15 @@ DiscordLyrics syncs Spotify playback into your Discord custom status. When synce
 - Rate-conscious status updates.
 - Rebuildable release package with npm scripts.
 
+## Client Support
+
+| Client | Status | Notes |
+| --- | --- | --- |
+| BetterDiscord | Supported | Uses the packaged `.plugin.js` release file. |
+| Vencord | Supported | Installs as a source userplugin and rebuilds the client. |
+| Equicord | Supported | Uses the same source userplugin layout as Vencord-style clients. |
+| Dorian | Supported | Works when the local source tree follows the Vencord plugin structure. |
+
 ## Download
 
 | Client | Release file | Setup |
