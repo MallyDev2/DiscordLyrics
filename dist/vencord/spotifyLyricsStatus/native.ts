@@ -21,10 +21,9 @@ const pendingUpdatePaths = appDataRoots.map(root => join(root, "DiscordLyrics", 
 const installProfilePath = join(appDataDir, "install-profile.json");
 const pendingUpdatePath = join(appDataDir, "pending-update.json");
 const updateInstallerPath = join(appDataDir, "DiscordLyrics-Installer.ps1");
+const updateUiPath = join(appDataDir, "DiscordLyrics-Installer.exe");
 const updateNotesPath = join(appDataDir, "update-notes.txt");
 const updateLogPath = join(appDataDir, "update-install.log");
-const updateLauncherPath = join(appDataDir, "update-launch.vbs");
-const updateRunnerPath = join(appDataDir, "update-run.ps1");
 const execFileAsync = promisify(execFile);
 
 export async function fetchJson(_: IpcMainInvokeEvent, url: string) {
@@ -162,54 +161,27 @@ export async function installUpdate(_: IpcMainInvokeEvent, version: string, body
     await writeFile(updateInstallerPath, await response.text(), "utf8");
     await writeFile(updateLogPath, `Installer script downloaded ${new Date().toISOString()}\n`, { flag: "a" });
 
+    const uiResponse = await fetch("https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.exe");
+    if (!uiResponse.ok) throw new Error(`Installer UI download returned ${uiResponse.status}`);
+    await writeFile(updateUiPath, Buffer.from(await uiResponse.arrayBuffer()));
+    await writeFile(updateLogPath, `Installer UI downloaded ${new Date().toISOString()}\n`, { flag: "a" });
+
     const target = ["Vencord", "Equicord", "Dorian"].includes(String(profile.target || ""))
         ? String(profile.target)
         : "Vencord";
 
-    const installerParams: Record<string, string | boolean> = {
-        Target: target,
-        NonInteractive: true,
-        UpdateVersion: String(version || ""),
-        UpdateNotesPath: updateNotesPath
-    };
+    const updateUiArgs: string[] = [
+        "-UpdateMode",
+        "-Target", target,
+        "-UpdateVersion", String(version || ""),
+        "-UpdateNotesPath", updateNotesPath
+    ];
 
-    if (profile.sourcePath) installerParams.SourcePath = profile.sourcePath;
+    if (profile.sourcePath) updateUiArgs.push("-SourcePath", profile.sourcePath);
 
-    const quotePs = (value: string) => `'${String(value).replace(/'/g, "''")}'`;
-    const paramLines = Object.entries(installerParams).map(([key, value]) => {
-        if (typeof value === "boolean") return `    ${key} = $${value ? "true" : "false"}`;
-        return `    ${key} = ${quotePs(value)}`;
-    });
-    const runner = [
-        "$ErrorActionPreference = 'Continue'",
-        `$LogPath = ${quotePs(updateLogPath)}`,
-        `Start-Transcript -Path $LogPath -Append | Out-Null`,
-        "try {",
-        `  $Installer = ${quotePs(updateInstallerPath)}`,
-        "  $InstallerParams = @{",
-        ...paramLines,
-        "  }",
-        "  & $Installer @InstallerParams",
-        "  exit $LASTEXITCODE",
-        "} finally {",
-        "  Stop-Transcript | Out-Null",
-        "}"
-    ].join("\r\n");
+    await writeFile(updateLogPath, `Installer UI launching ${new Date().toISOString()}\n`, { flag: "a" });
 
-    await writeFile(updateRunnerPath, runner, "utf8");
-
-    const quoteVbs = (value: string) => `"${String(value).replace(/"/g, "\"\"")}"`;
-    const quoteWin = (value: string) => `"${String(value).replace(/"/g, "\\\"")}"`;
-    const commandLine = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quoteWin(updateRunnerPath)}`;
-    const launcher = [
-        "Set shell = CreateObject(\"WScript.Shell\")",
-        `shell.Run ${quoteVbs(commandLine)}, 0, False`
-    ].join("\r\n");
-
-    await writeFile(updateLauncherPath, launcher, "utf8");
-    await writeFile(updateLogPath, `Hidden installer launcher written ${new Date().toISOString()}\n`, { flag: "a" });
-
-    const child = spawn("wscript.exe", [updateLauncherPath], {
+    const child = spawn(updateUiPath, updateUiArgs, {
         detached: true,
         windowsHide: true,
         stdio: "ignore"

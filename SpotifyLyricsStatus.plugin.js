@@ -47,9 +47,8 @@ module.exports = class DiscordLyrics {
         this.pendingUpdatePath = path.join(this.stateDir, "pending-update.json");
         this.updateNotesPath = path.join(this.stateDir, "update-notes.txt");
         this.updateInstallerPath = path.join(this.stateDir, "DiscordLyrics-Installer.ps1");
+        this.updateUiPath = path.join(this.stateDir, "DiscordLyrics-Installer.exe");
         this.updateLogPath = path.join(this.stateDir, "update-install.log");
-        this.updateLauncherPath = path.join(this.stateDir, "update-launch.vbs");
-        this.updateRunnerPath = path.join(this.stateDir, "update-run.ps1");
         this.pendingUpdateNoticeOpen = false;
 
         this.config = {
@@ -490,50 +489,23 @@ try {
             fs.writeFileSync(this.updateInstallerPath, await response.text(), "utf8");
             fs.appendFileSync(this.updateLogPath, `Installer script downloaded ${new Date().toISOString()}\n`);
 
-            const installerParams = {
-                Target: "BetterDiscord",
-                NonInteractive: true,
-                UpdateVersion: String(version || ""),
-                UpdateNotesPath: this.updateNotesPath
-            };
+            const uiResponse = await fetch(`https://github.com/${this.repo}/releases/latest/download/DiscordLyrics-Installer.exe`);
+            if (!uiResponse.ok) throw new Error(`Installer UI download returned ${uiResponse.status}`);
+            fs.writeFileSync(this.updateUiPath, Buffer.from(await uiResponse.arrayBuffer()));
+            fs.appendFileSync(this.updateLogPath, `Installer UI downloaded ${new Date().toISOString()}\n`);
 
-            if (profile.sourcePath) installerParams.SourcePath = profile.sourcePath;
+            const updateUiArgs = [
+                "-UpdateMode",
+                "-Target", "BetterDiscord",
+                "-UpdateVersion", String(version || ""),
+                "-UpdateNotesPath", this.updateNotesPath
+            ];
 
-            const quotePs = value => `'${String(value).replace(/'/g, "''")}'`;
-            const paramLines = Object.entries(installerParams).map(([key, value]) => {
-                if (typeof value === "boolean") return `    ${key} = $${value ? "true" : "false"}`;
-                return `    ${key} = ${quotePs(value)}`;
-            });
-            const runner = [
-                "$ErrorActionPreference = 'Continue'",
-                `$LogPath = ${quotePs(this.updateLogPath)}`,
-                "Start-Transcript -Path $LogPath -Append | Out-Null",
-                "try {",
-                `  $Installer = ${quotePs(this.updateInstallerPath)}`,
-                "  $InstallerParams = @{",
-                ...paramLines,
-                "  }",
-                "  & $Installer @InstallerParams",
-                "  exit $LASTEXITCODE",
-                "} finally {",
-                "  Stop-Transcript | Out-Null",
-                "}"
-            ].join("\r\n");
+            if (profile.sourcePath) updateUiArgs.push("-SourcePath", profile.sourcePath);
 
-            fs.writeFileSync(this.updateRunnerPath, runner, "utf8");
+            fs.appendFileSync(this.updateLogPath, `Installer UI launching ${new Date().toISOString()}\n`);
 
-            const quoteVbs = value => `"${String(value).replace(/"/g, "\"\"")}"`;
-            const quoteWin = value => `"${String(value).replace(/"/g, "\\\"")}"`;
-            const commandLine = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quoteWin(this.updateRunnerPath)}`;
-            const launcher = [
-                "Set shell = CreateObject(\"WScript.Shell\")",
-                `shell.Run ${quoteVbs(commandLine)}, 0, False`
-            ].join("\r\n");
-
-            fs.writeFileSync(this.updateLauncherPath, launcher, "utf8");
-            fs.appendFileSync(this.updateLogPath, `Hidden installer launcher written ${new Date().toISOString()}\n`);
-
-            const child = spawn("wscript.exe", [this.updateLauncherPath], {
+            const child = spawn(this.updateUiPath, updateUiArgs, {
                 detached: true,
                 windowsHide: true,
                 stdio: "ignore"

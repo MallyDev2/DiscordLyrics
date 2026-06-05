@@ -35,6 +35,11 @@ internal sealed class InstallerForm : Form
     private readonly RichTextBox logBox = new RichTextBox();
     private readonly string scriptRoot;
     private readonly string localPackageArg;
+    private readonly string targetArg;
+    private readonly string sourcePathArg;
+    private readonly string updateVersionArg;
+    private readonly string updateNotesPathArg;
+    private readonly bool updateMode;
 
     private readonly Color muted = Color.FromArgb(174, 181, 198);
     private readonly Color panelColor = Color.FromArgb(31, 34, 44);
@@ -46,8 +51,13 @@ internal sealed class InstallerForm : Form
     {
         scriptRoot = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         localPackageArg = ReadArgument(args, "-LocalPackageDir");
+        targetArg = ReadArgument(args, "-Target");
+        sourcePathArg = ReadArgument(args, "-SourcePath");
+        updateVersionArg = ReadArgument(args, "-UpdateVersion");
+        updateNotesPathArg = ReadArgument(args, "-UpdateNotesPath");
+        updateMode = HasArgument(args, "-UpdateMode");
 
-        Text = "DiscordLyrics Installer";
+        Text = updateMode ? "Updating DiscordLyrics" : "DiscordLyrics Installer";
         Width = 760;
         Height = 610;
         StartPosition = FormStartPosition.CenterScreen;
@@ -57,8 +67,8 @@ internal sealed class InstallerForm : Form
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? CreateIcon();
         MaximizeBox = false;
 
-        AddText(this, "DiscordLyrics", 28, 22, 360, 42, 22f, true, Color.White);
-        AddText(this, "Install Spotify synced lyrics status for Discord.", 30, 62, 560, 24, 10f, false, muted);
+        AddText(this, updateMode ? "Updating DiscordLyrics" : "DiscordLyrics", 28, 22, 430, 42, 22f, true, Color.White);
+        AddText(this, updateMode ? "Installing the update and restarting Discord." : "Install Spotify synced lyrics status for Discord.", 30, 62, 560, 24, 10f, false, muted);
 
         var mainPanel = new Panel
         {
@@ -129,6 +139,9 @@ internal sealed class InstallerForm : Form
         BuildLog();
 
         packageBox.Text = GetDefaultPackageDir();
+        ApplyArgumentDefaults();
+        if (updateMode)
+            ConfigureUpdateMode();
         SetUiState();
     }
 
@@ -209,6 +222,47 @@ internal sealed class InstallerForm : Form
         advancedButton.Text = advancedPanel.Visible ? "Hide advanced" : "Advanced";
     }
 
+    private void ApplyArgumentDefaults()
+    {
+        if (!string.IsNullOrWhiteSpace(targetArg))
+        {
+            var index = targetBox.Items.IndexOf(targetArg);
+            if (index >= 0)
+                targetBox.SelectedIndex = index;
+        }
+
+        if (!string.IsNullOrWhiteSpace(sourcePathArg))
+            sourceBox.Text = sourcePathArg;
+
+        if (!string.IsNullOrWhiteSpace(localPackageArg))
+            packageBox.Text = localPackageArg;
+    }
+
+    private void ConfigureUpdateMode()
+    {
+        targetBox.Enabled = false;
+        installButton.Visible = false;
+        advancedButton.Visible = false;
+        advancedPanel.Visible = false;
+
+        foreach (Control control in Controls)
+        {
+            var button = control as Button;
+            if (button != null && button.Text == "Close")
+                button.Visible = false;
+        }
+
+        logBox.Top = 188;
+        logBox.Height = 324;
+        statusLabel.Left = 28;
+        statusLabel.Top = 122;
+        statusLabel.Width = 660;
+        statusLabel.Text = "Preparing update...";
+        Height = 590;
+
+        Shown += (_, __) => BeginInvoke((Action)Install);
+    }
+
     private void Install()
     {
         var plan = GetInstallPlan();
@@ -230,9 +284,9 @@ internal sealed class InstallerForm : Form
 
         installButton.Enabled = false;
         advancedButton.Enabled = false;
-        statusLabel.Text = "Installing...";
+        statusLabel.Text = updateMode ? "Updating..." : "Installing...";
         logBox.Clear();
-        AppendLog("Installing for " + plan.Target);
+        AppendLog((updateMode ? "Updating " : "Installing for ") + plan.Target);
 
         var installerPath = GetInstallerPath();
         var args = new List<string>
@@ -243,11 +297,20 @@ internal sealed class InstallerForm : Form
             "-Target", plan.Target
         };
 
+        if (updateMode)
+            args.Add("-NonInteractive");
+
         if (!string.IsNullOrWhiteSpace(plan.SourcePath))
             args.AddRange(new[] { "-SourcePath", plan.SourcePath });
 
         if (!string.IsNullOrWhiteSpace(packageBox.Text))
             args.AddRange(new[] { "-LocalPackageDir", packageBox.Text.Trim() });
+
+        if (!string.IsNullOrWhiteSpace(updateVersionArg))
+            args.AddRange(new[] { "-UpdateVersion", updateVersionArg });
+
+        if (!string.IsNullOrWhiteSpace(updateNotesPathArg))
+            args.AddRange(new[] { "-UpdateNotesPath", updateNotesPathArg });
 
         if (skipBuildBox.Checked)
             args.Add("-SkipBuild");
@@ -277,9 +340,21 @@ internal sealed class InstallerForm : Form
             {
                 statusLabel.Text = process.ExitCode == 0 ? "Installed" : "Failed";
                 AppendLog(process.ExitCode == 0 ? "Install complete." : "Install failed with exit code " + process.ExitCode + ".");
-                installButton.Enabled = true;
-                advancedButton.Enabled = true;
+                installButton.Enabled = !updateMode;
+                advancedButton.Enabled = !updateMode;
                 process.Dispose();
+                if (updateMode && statusLabel.Text == "Installed")
+                {
+                    statusLabel.Text = "Discord reopened";
+                    var timer = new Timer { Interval = 1500 };
+                    timer.Tick += (timerSender, timerArgs) =>
+                    {
+                        timer.Stop();
+                        timer.Dispose();
+                        Close();
+                    };
+                    timer.Start();
+                }
             }));
         };
 
@@ -293,8 +368,8 @@ internal sealed class InstallerForm : Form
         {
             statusLabel.Text = "Failed";
             AppendLog(ex.Message);
-            installButton.Enabled = true;
-            advancedButton.Enabled = true;
+            installButton.Enabled = !updateMode;
+            advancedButton.Enabled = !updateMode;
             process.Dispose();
         }
     }
@@ -303,6 +378,9 @@ internal sealed class InstallerForm : Form
     {
         var selected = Convert.ToString(targetBox.SelectedItem) ?? "Auto";
         var names = new[] { "Vencord", "Equicord", "Dorian" };
+
+        if (updateMode && !string.IsNullOrWhiteSpace(targetArg))
+            return new InstallPlan(targetArg, sourcePathArg, "Updating " + targetArg, DateTime.Now);
 
         if (selected == "Auto")
         {
@@ -431,6 +509,11 @@ internal sealed class InstallerForm : Form
         }
 
         return "";
+    }
+
+    private static bool HasArgument(string[] args, string name)
+    {
+        return args.Any(arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string SelectFolder(string description)
