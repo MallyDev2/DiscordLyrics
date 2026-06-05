@@ -2,6 +2,10 @@ param(
     [ValidateSet("Auto", "BetterDiscord", "Vencord", "Equicord", "Dorian")]
     [string]$Target = "Auto",
     [string]$SourcePath = "",
+    [string]$LocalPackageDir = "",
+    [string]$UpdateVersion = "",
+    [string]$UpdateNotesPath = "",
+    [switch]$NonInteractive,
     [switch]$SkipBuild,
     [switch]$NoInject
 )
@@ -13,6 +17,9 @@ $Repo = "MallyDev2/DiscordLyrics"
 $WorkDir = Join-Path $env:TEMP "DiscordLyricsInstaller"
 $ReleaseZip = Join-Path $WorkDir "DiscordLyrics-release.zip"
 $PackageDir = Join-Path $WorkDir "package"
+$StateDir = Join-Path $env:APPDATA "DiscordLyrics"
+$InstallProfilePath = Join-Path $StateDir "install-profile.json"
+$PendingUpdatePath = Join-Path $StateDir "pending-update.json"
 
 function Write-Step($Text) {
     Write-Host ""
@@ -27,6 +34,43 @@ function Write-Warn($Text) {
     Write-Host "   $Text" -ForegroundColor Yellow
 }
 
+function Save-InstallProfile {
+    param(
+        [string]$ClientName,
+        [string]$ClientRoot = ""
+    )
+
+    New-Item -ItemType Directory -Force $StateDir | Out-Null
+    [pscustomobject]@{
+        target = $ClientName
+        sourcePath = $ClientRoot
+        updatedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $InstallProfilePath -Encoding UTF8
+}
+
+function Save-PendingUpdateNotice {
+    param(
+        [string]$Version,
+        [string]$NotesPath = ""
+    )
+
+    if (!$Version) {
+        return
+    }
+
+    $Body = ""
+    if ($NotesPath -and (Test-Path -LiteralPath $NotesPath)) {
+        $Body = Get-Content -LiteralPath $NotesPath -Raw
+    }
+
+    New-Item -ItemType Directory -Force $StateDir | Out-Null
+    [pscustomobject]@{
+        version = $Version
+        body = $Body
+        installedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $PendingUpdatePath -Encoding UTF8
+}
+
 function Invoke-CheckedCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -35,9 +79,26 @@ function Invoke-CheckedCommand {
         [string[]]$Arguments
     )
 
-    & $Command @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Command $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $Output = & $Command @Arguments 2>&1
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+
+    $Text = ($Output | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    if ($Text) {
+        Write-Host $Text
+    }
+
+    if ($ExitCode -ne 0) {
+        throw "$Command $($Arguments -join ' ') failed with exit code $ExitCode."
+    }
+
+    if ($Text -match "(?m)(ERROR|Failed!|Something went wrong)") {
+        throw "$Command $($Arguments -join ' ') reported a failed operation."
     }
 }
 
@@ -92,6 +153,22 @@ function Download-Release {
     Write-Ok "Release package ready"
 }
 
+function Use-LocalPackage {
+    param([string]$Path)
+
+    if (!(Test-Path $Path)) {
+        throw "LocalPackageDir was not found: $Path"
+    }
+
+    $Resolved = (Resolve-Path $Path).Path
+    if (!(Test-Path (Join-Path $Resolved "BetterDiscord")) -or !(Test-Path (Join-Path $Resolved "Vencord"))) {
+        throw "LocalPackageDir must point to the built package folder containing BetterDiscord and Vencord."
+    }
+
+    $script:PackageDir = $Resolved
+    Write-Ok "Using local release package: $PackageDir"
+}
+
 function Install-BetterDiscord {
     $PluginSource = Join-Path $PackageDir "BetterDiscord\SpotifyLyricsStatus.plugin.js"
     $PluginDir = Join-Path $env:APPDATA "BetterDiscord\plugins"
@@ -114,6 +191,52 @@ function Stop-Discord {
     Write-Step "Closing Discord"
     $DiscordProcesses | Stop-Process -Force
     Start-Sleep -Seconds 2
+}
+
+function Repair-DiscordAsar {
+    $InstallRoots = @(
+        (Join-Path $env:LOCALAPPDATA "Discord"),
+        (Join-Path $env:LOCALAPPDATA "DiscordCanary"),
+        (Join-Path $env:LOCALAPPDATA "DiscordPTB"),
+        (Join-Path $env:LOCALAPPDATA "DiscordDevelopment")
+    ) | Where-Object { Test-Path $_ }
+
+    foreach ($Root in $InstallRoots) {
+        $Apps = Get-ChildItem $Root -Directory -Filter "app-*" -ErrorAction SilentlyContinue
+        foreach ($App in $Apps) {
+            $Resources = Join-Path $App.FullName "resources"
+            $AppAsar = Join-Path $Resources "app.asar"
+            $OriginalAsar = Join-Path $Resources "_app.asar"
+
+            if ((Test-Path $Resources) -and !(Test-Path $AppAsar) -and !(Test-Path $OriginalAsar)) {
+                $ResourceFiles = Get-ChildItem $Resources -Force -ErrorAction SilentlyContinue
+                if (!$ResourceFiles -or $ResourceFiles.Count -eq 0) {
+                    Write-Warn "Removing incomplete Discord app package before injection: $($App.FullName)"
+                    Remove-Item $App.FullName -Recurse -Force
+                }
+                continue
+            }
+
+            if (!(Test-Path $OriginalAsar)) {
+                continue
+            }
+
+            $NeedsRestore = !(Test-Path $AppAsar)
+            if (!$NeedsRestore) {
+                $AppAsarItem = Get-Item $AppAsar
+                $OriginalItem = Get-Item $OriginalAsar
+                $NeedsRestore = $AppAsarItem.Length -lt 4096 -and $OriginalItem.Length -gt $AppAsarItem.Length
+            }
+
+            if ($NeedsRestore) {
+                Write-Warn "Restoring Discord app package before injection: $AppAsar"
+                if (Test-Path $AppAsar) {
+                    Remove-Item -LiteralPath $AppAsar -Recurse -Force
+                }
+                Move-Item $OriginalAsar $AppAsar -Force
+            }
+        }
+    }
 }
 
 function Test-DiscordRunning {
@@ -191,6 +314,16 @@ function Start-Discord {
 }
 
 function Select-InstallTarget {
+    if ($NonInteractive) {
+        $Detected = Get-AutoDetectedClient
+        if ($Detected) {
+            Write-Ok "Auto-detected $($Detected.Name)"
+            return $Detected.Name
+        }
+
+        throw "Auto install could not find one clear source client. Run the installer once manually, then try the update again."
+    }
+
     Write-Host ""
     Write-Host "Install mode:" -ForegroundColor Cyan
     Write-Host "[1] Auto-detect installed client"
@@ -366,6 +499,16 @@ function Select-SourcePath {
             return $MatchingCandidates[0]
         }
 
+        if ($NonInteractive -and $MatchingCandidates.Count -gt 1) {
+            $Selected = $MatchingCandidates |
+                ForEach-Object { Get-Item -LiteralPath $_ } |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+
+            Write-Ok "Using newest matching source client: $($Selected.FullName)"
+            return $Selected.FullName
+        }
+
         if ($MatchingCandidates.Count -gt 1) {
             Write-Host ""
             Write-Host "Detected matching $ClientName source folders:" -ForegroundColor Cyan
@@ -380,6 +523,11 @@ function Select-SourcePath {
         }
 
         Write-Warn "No matching $ClientName source folder was found automatically."
+
+        if ($NonInteractive) {
+            return Clone-SourceClient -ClientName $ClientName
+        }
+
         Write-Host ""
         Write-Host "[1] Download fresh $ClientName source into Documents\\$ClientName"
         Write-Host "[2] Paste the exact $ClientName source folder path"
@@ -393,6 +541,10 @@ function Select-SourcePath {
         if ($SourceChoice.Trim() -ne "2") {
             throw "Invalid source selection. Run the installer again and choose 1 or 2."
         }
+    }
+
+    if ($NonInteractive) {
+        throw "Auto install needs a valid source folder for $ClientName."
     }
 
     $Manual = Read-Host "Paste your $ClientName source folder path"
@@ -471,8 +623,13 @@ function Install-SourceClient {
         $CanInject = $PackageJson -match '"inject"\s*:'
         if (!$NoInject -and $CanInject) {
             Stop-Discord
+            Repair-DiscordAsar
             Write-Step "Reinstalling client into Discord"
-            Invoke-CheckedCommand pnpm inject
+            if ($ClientName -eq "Vencord") {
+                Invoke-CheckedCommand pnpm inject -- -branch stable
+            } else {
+                Invoke-CheckedCommand pnpm inject
+            }
             Write-Ok "Client was rebuilt and injected"
         } elseif ($NoInject -and $CanInject) {
             Write-Warn "Build complete. Injection skipped because -NoInject was used."
@@ -482,10 +639,16 @@ function Install-SourceClient {
     } finally {
         Pop-Location
     }
+
+    return $ClientRoot
 }
 
-Reset-WorkDir
-Download-Release
+if ($LocalPackageDir) {
+    Use-LocalPackage -Path $LocalPackageDir
+} else {
+    Reset-WorkDir
+    Download-Release
+}
 
 $SelectedTarget = if ($Target -eq "Auto") { Select-InstallTarget } else { $Target }
 
@@ -493,13 +656,16 @@ if ($SelectedTarget -eq "BetterDiscord") {
     Stop-Discord
     Write-Step "Installing BetterDiscord"
     Install-BetterDiscord
+    Save-InstallProfile -ClientName "BetterDiscord"
 }
 
 if ($SelectedTarget -in @("Vencord", "Equicord", "Dorian")) {
     Write-Step "Installing $SelectedTarget source plugin"
-    Install-SourceClient -ClientName $SelectedTarget
+    $InstalledSourcePath = Install-SourceClient -ClientName $SelectedTarget
+    Save-InstallProfile -ClientName $SelectedTarget -ClientRoot $InstalledSourcePath
 }
 
+Save-PendingUpdateNotice -Version $UpdateVersion -NotesPath $UpdateNotesPath
 Start-Discord
 
 Write-Host ""

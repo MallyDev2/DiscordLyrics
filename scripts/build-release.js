@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const childProcess = require("child_process");
 const zlib = require("zlib");
 
 const root = path.resolve(__dirname, "..");
@@ -128,17 +129,94 @@ function createZip(sourceDir, outFile) {
   fs.writeFileSync(outFile, Buffer.concat([...localParts, ...centralParts, end]));
 }
 
+function findCsc() {
+  const candidates = [
+    path.join(process.env.WINDIR || "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"),
+    path.join(process.env.WINDIR || "C:\\Windows", "Microsoft.NET", "Framework", "v4.0.30319", "csc.exe")
+  ];
+
+  return candidates.find(candidate => fs.existsSync(candidate));
+}
+
+function buildInstallerIcon() {
+  const source = path.join(root, "assets", "FAROUTCORP-Logo.png");
+  const icon = path.join(dist, "DiscordLyrics-Installer.ico");
+  if (!fs.existsSync(source)) return "";
+
+  const script = `
+Add-Type -AssemblyName System.Drawing
+$src = ${JSON.stringify(source)}
+$out = ${JSON.stringify(icon)}
+$sourceBitmap = [System.Drawing.Bitmap]::FromFile($src)
+$bitmap = New-Object System.Drawing.Bitmap 256, 256
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+$graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$graphics.Clear([System.Drawing.Color]::Transparent)
+$graphics.DrawImage($sourceBitmap, 0, 0, 256, 256)
+$icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+$stream = [System.IO.File]::Create($out)
+$icon.Save($stream)
+$stream.Dispose()
+$icon.Dispose()
+$graphics.Dispose()
+$bitmap.Dispose()
+$sourceBitmap.Dispose()
+`;
+
+  childProcess.execFileSync("powershell.exe", [
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-Command", script
+  ], { stdio: "inherit" });
+
+  return icon;
+}
+
+function buildInstallerUi() {
+  const csc = findCsc();
+  if (!csc) throw new Error("Could not find the .NET Framework C# compiler for the installer UI.");
+  const icon = buildInstallerIcon();
+
+  const args = [
+    "/nologo",
+    "/target:winexe",
+    "/optimize+",
+    "/reference:System.dll",
+    "/reference:System.Core.dll",
+    "/reference:System.Drawing.dll",
+    "/reference:System.Windows.Forms.dll",
+    `/out:${path.join(dist, "DiscordLyrics-Installer.exe")}`,
+    path.join(root, "scripts", "DiscordLyrics-Installer-UI.cs")
+  ];
+
+  if (icon) args.splice(args.length - 1, 0, `/win32icon:${icon}`);
+
+  childProcess.execFileSync(csc, args, { stdio: "inherit" });
+}
+
 fs.rmSync(dist, { recursive: true, force: true });
 ensureDir(dist);
+buildInstallerUi();
 copyFile(path.join(root, "SpotifyLyricsStatus.plugin.js"), path.join(dist, "SpotifyLyricsStatus.plugin.js"));
 copyFile(path.join(root, "scripts", "DiscordLyrics-Installer.ps1"), path.join(dist, "DiscordLyrics-Installer.ps1"));
+copyFile(path.join(root, "scripts", "DiscordLyrics-Installer-UI.cs"), path.join(dist, "DiscordLyrics-Installer-UI.cs"));
+copyFile(path.join(root, "scripts", "DiscordLyrics-Installer-UI.ps1"), path.join(dist, "DiscordLyrics-Installer-UI.ps1"));
+copyFile(path.join(root, "scripts", "DiscordLyrics-Installer.vbs"), path.join(dist, "DiscordLyrics-Installer.vbs"));
 copyFile(path.join(root, "scripts", "DiscordLyrics-Installer.cmd"), path.join(dist, "DiscordLyrics-Installer.cmd"));
 copyDir(vencordSource, vencordDist);
 createZip(path.join(dist, "vencord"), path.join(dist, "vencord-spotifyLyricsStatus.zip"));
 ensureDir(packageDir);
 copyFile(path.join(dist, "SpotifyLyricsStatus.plugin.js"), path.join(packageDir, "BetterDiscord", "SpotifyLyricsStatus.plugin.js"));
 copyFile(path.join(dist, "vencord-spotifyLyricsStatus.zip"), path.join(packageDir, "Vencord", "vencord-spotifyLyricsStatus.zip"));
+copyFile(path.join(dist, "DiscordLyrics-Installer.exe"), path.join(packageDir, "DiscordLyrics-Installer.exe"));
+if (fs.existsSync(path.join(dist, "DiscordLyrics-Installer.ico"))) {
+  copyFile(path.join(dist, "DiscordLyrics-Installer.ico"), path.join(packageDir, "DiscordLyrics-Installer.ico"));
+}
 copyFile(path.join(dist, "DiscordLyrics-Installer.ps1"), path.join(packageDir, "DiscordLyrics-Installer.ps1"));
+copyFile(path.join(dist, "DiscordLyrics-Installer-UI.cs"), path.join(packageDir, "DiscordLyrics-Installer-UI.cs"));
+copyFile(path.join(dist, "DiscordLyrics-Installer-UI.ps1"), path.join(packageDir, "DiscordLyrics-Installer-UI.ps1"));
+copyFile(path.join(dist, "DiscordLyrics-Installer.vbs"), path.join(packageDir, "DiscordLyrics-Installer.vbs"));
 copyFile(path.join(dist, "DiscordLyrics-Installer.cmd"), path.join(packageDir, "DiscordLyrics-Installer.cmd"));
 copyFile(path.join(root, "README.md"), path.join(packageDir, "README.md"));
 copyFile(path.join(root, "LICENSE"), path.join(packageDir, "LICENSE"));

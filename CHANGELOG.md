@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.3
+
+- Added a Windows UI installer while keeping the command-line installer path available.
+- Added update checks in plugin settings with current version, latest release, and last checked time.
+- Added startup update checks and an install-and-restart prompt when a newer release is available.
+- Added a one-time post-update prompt with release notes after Discord reopens.
+- Added paused Spotify detection when Discord opens after Spotify is already running.
+- Fixed paused status restore when Discord clears the custom status during startup.
+- Fixed song changes so the old status clears quickly without wiping the next song.
+- Fixed Spotify album art in Vencord rich presence, including paused startup fallback art.
+- Fixed rich presence timers so playback resumes from the current song position with the correct duration.
+- Added BetterDiscord coverage for update checks, paused-start status restore, and installer updates.
+
 ## 1.0.2
 
 - Fixed source client selection so choosing Vencord can no longer fall back into an Equicord or Dorian source folder.

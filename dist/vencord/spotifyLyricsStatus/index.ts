@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import * as DataStore from "@api/DataStore";
 import { definePluginSettings } from "@api/Settings";
 import { UserSettings } from "@api/UserSettings";
 import { SpotifyStore } from "@plugins/spotifyControls/SpotifyStore";
 import definePlugin, { OptionType, type PluginNative } from "@utils/types";
 import type { Activity } from "@vencord/discord-types";
 import { ActivityFlags, ActivityStatusDisplayType, ActivityType } from "@vencord/discord-types/enums";
-import { ApplicationAssetUtils, Button, FluxDispatcher, React, showToast, Toasts, UserStore } from "@webpack/common";
+import { ApplicationAssetUtils, Button, ConfirmModal, FluxDispatcher, openModal, React, showToast, Toasts, UserStore } from "@webpack/common";
 
-const Native = VencordNative.pluginHelpers.SpotifyLyricsStatus as PluginNative<typeof import("./native")>;
+const Native = (VencordNative.pluginHelpers.DiscordLyrics ?? VencordNative.pluginHelpers.SpotifyLyricsStatus) as PluginNative<typeof import("./native")>;
 
 const DEFAULT_SETTINGS = {
     lyricOffsetMs: 650,
@@ -30,6 +31,13 @@ const DEFAULT_SETTINGS = {
     rpcShowWhenPaused: true,
     rpcShowAlbumArt: true
 } as const;
+
+const RELEASE_VERSION = "1.0.3";
+const REPO = "MallyDev2/DiscordLyrics";
+const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+const LAST_UPDATE_CHECK_KEY = "DiscordLyrics.lastUpdateCheck";
+const LAST_UPDATE_VERSION_KEY = "DiscordLyrics.lastUpdateVersion";
+const AUTO_UPDATE_SESSION_KEY = "DiscordLyrics.autoUpdateCheckedAt";
 
 type FontStyleId =
     | "normal"
@@ -160,8 +168,30 @@ interface LrcLibResult {
     synced_lyrics?: string | null;
 }
 
+interface WindowsSpotifyState {
+    processRunning?: boolean;
+    track?: {
+        title?: string;
+        artist?: string;
+        album?: string;
+        status?: string;
+        positionMs?: number;
+        durationMs?: number;
+    } | null;
+}
+
 let interval: ReturnType<typeof setInterval> | undefined;
 let spotifyState: SpotifyStateEvent | undefined;
+let windowsSpotifyTrack: NormalizedTrack | undefined;
+let windowsSpotifyTrackReceivedAt = 0;
+let windowsSpotifyProcessRunning = false;
+let windowsSpotifyProcessSeenAt = 0;
+let lastWindowsSpotifyPollAt = 0;
+let windowsSpotifyPollInFlight = false;
+let lastKnownSpotifyTrack: NormalizedTrack | undefined;
+let lastKnownSpotifyTrackAt = 0;
+const fallbackAlbumImageCache = new Map<string, string | undefined>();
+const fallbackAlbumImageRequests = new Map<string, Promise<string | undefined>>();
 let fetchController: AbortController | undefined;
 let lyrics: LyricLine[] = [];
 let lastTrackKey = "";
@@ -173,14 +203,26 @@ let remoteStatusInFlight = false;
 let remoteStatusTimer: ReturnType<typeof setTimeout> | undefined;
 let nextRemoteStatusAt = 0;
 let lastRpcKey = "";
+let lastRpcStartedAt = 0;
 let lastSpotifyPollAt = 0;
 let spotifyPollInFlight = false;
 let lastPlaybackPlaying: boolean | undefined;
+let spotifyUnavailableAt = 0;
+let spotifyPollMutedUntil = 0;
+let lastRemoteStatusExpiresAt = 0;
 
 const STATUS_SOCKET_ID = "SpotifyLyricsStatus";
 const RPC_SOCKET_ID = "SpotifyLyricsStatusRpc";
 const MIN_REMOTE_STATUS_INTERVAL_MS = 150;
-const SPOTIFY_POLL_INTERVAL_MS = 1000;
+const SPOTIFY_POLL_INTERVAL_MS = 500;
+const WINDOWS_SPOTIFY_POLL_INTERVAL_MS = 2000;
+const SPOTIFY_STATE_FRESH_MS = 15000;
+const WINDOWS_SPOTIFY_STATE_FRESH_MS = 10000;
+const WINDOWS_SPOTIFY_PROCESS_GRACE_MS = 15000;
+const SPOTIFY_UNAVAILABLE_GRACE_MS = 5000;
+const LAST_KNOWN_SPOTIFY_TRACK_MS = 30 * 60 * 1000;
+const STATUS_EXPIRATION_MS = 120000;
+const STATUS_EXPIRATION_REFRESH_MS = 45000;
 const albumAssetCache = new Map<string, Promise<string | undefined>>();
 const albumAssetResolved = new Map<string, string | undefined>();
 const pluginAuthor = { name: "mally", id: 0n };
@@ -235,6 +277,250 @@ function resetPluginDefaults() {
     restartTimer();
     tick();
     showToast("Spotify Lyrics Status settings reset", Toasts.Type.SUCCESS);
+}
+
+interface GithubRelease {
+    tag_name?: string;
+    name?: string;
+    html_url?: string;
+    body?: string;
+}
+
+function normalizeVersion(value: unknown) {
+    const match = String(value ?? "").match(/\d+\.\d+\.\d+/);
+    return match ? match[0] : "";
+}
+
+function compareVersions(a: string, b: string) {
+    const left = a.split(".").map(Number);
+    const right = b.split(".").map(Number);
+
+    for (let index = 0; index < 3; index++) {
+        if ((left[index] || 0) > (right[index] || 0)) return 1;
+        if ((left[index] || 0) < (right[index] || 0)) return -1;
+    }
+
+    return 0;
+}
+
+function formatLastChecked(value: string | null) {
+    const timestamp = Number(value);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return "Last checked: never";
+    return `Last checked: ${new Date(timestamp).toLocaleString()}`;
+}
+
+async function fetchLatestRelease() {
+    const response = await Native.fetchGithubRelease(LATEST_RELEASE_API) as { status: number; data: GithubRelease | null; };
+    if (response.status < 200 || response.status >= 300 || !response.data) {
+        throw new Error(`Release lookup returned ${response.status}`);
+    }
+
+    return response.data;
+}
+
+async function checkForDiscordLyricsUpdate(options: { silentIfCurrent?: boolean; source?: "startup" | "manual"; } = {}) {
+    const checkedAt = String(Date.now());
+    await DataStore.set(LAST_UPDATE_CHECK_KEY, checkedAt);
+
+    try {
+        const release = await fetchLatestRelease();
+        const latest = normalizeVersion(release.tag_name || release.name || "");
+        if (latest) await DataStore.set(LAST_UPDATE_VERSION_KEY, latest);
+
+        if (!latest || compareVersions(latest, RELEASE_VERSION) <= 0) {
+            if (!options.silentIfCurrent) showToast("DiscordLyrics is up to date", Toasts.Type.SUCCESS);
+            return { latest: latest || RELEASE_VERSION, checkedAt };
+        }
+
+        debugLog(`update available current=${RELEASE_VERSION} latest=${latest} source=${options.source || "manual"}`);
+        showUpdateFoundModal(latest, release);
+
+        return { latest, checkedAt };
+    } catch (error) {
+        debugLog(`update check failed ${stringifyError(error)}`);
+        if (!options.silentIfCurrent) showToast("DiscordLyrics update check failed", Toasts.Type.FAILURE);
+        return { latest: "", checkedAt };
+    }
+}
+
+async function checkForDiscordLyricsUpdateOnStartup() {
+    try {
+        const sessionKey = `${Date.now() - performance.now()}`;
+        if (await DataStore.get<string>(AUTO_UPDATE_SESSION_KEY) === sessionKey) return;
+        await DataStore.set(AUTO_UPDATE_SESSION_KEY, sessionKey);
+        await checkForDiscordLyricsUpdate({ silentIfCurrent: true, source: "startup" });
+    } catch (error) {
+        debugLog(`startup update check failed ${stringifyError(error)}`);
+    }
+}
+
+function releaseBodyPreview(body: string) {
+    const text = String(body || "No release notes were provided.")
+        .replace(/\r\n/g, "\n")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    return text.length > 1200 ? `${text.slice(0, 1200)}...` : text;
+}
+
+function renderReleaseNotes(body: string) {
+    const text = releaseBodyPreview(body);
+    const blocks: any[] = [];
+    let listItems: string[] = [];
+
+    const flushList = () => {
+        if (!listItems.length) return;
+        const items = listItems;
+        listItems = [];
+        blocks.push(React.createElement("ul", {
+            key: `list-${blocks.length}`,
+            style: { margin: "0 0 0 18px", padding: 0 }
+        }, items.map((item, index) => React.createElement("li", {
+            key: index,
+            style: { marginBottom: "4px" }
+        }, item))));
+    };
+
+    for (const rawLine of text.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line) {
+            flushList();
+            continue;
+        }
+
+        const heading = /^(#{1,4})\s+(.+)$/.exec(line);
+        if (heading) {
+            flushList();
+            const level = heading[1].length;
+            blocks.push(React.createElement("div", {
+                key: `heading-${blocks.length}`,
+                style: {
+                    fontWeight: 700,
+                    fontSize: level <= 2 ? "16px" : "14px",
+                    marginTop: blocks.length ? "6px" : 0
+                }
+            }, heading[2]));
+            continue;
+        }
+
+        const bullet = /^[-*]\s+(.+)$/.exec(line);
+        if (bullet) {
+            listItems.push(bullet[1]);
+            continue;
+        }
+
+        flushList();
+        blocks.push(React.createElement("p", {
+            key: `paragraph-${blocks.length}`,
+            style: { margin: 0, lineHeight: 1.45 }
+        }, line));
+    }
+
+    flushList();
+    return blocks.length ? blocks : React.createElement("p", { style: { margin: 0 } }, "No release notes were provided.");
+}
+
+function showUpdateFoundModal(version: string, release: GithubRelease) {
+    openModal(props => React.createElement(ConfirmModal, {
+        ...props,
+        title: "Update found",
+        subtitle: `DiscordLyrics ${version} is available. Install it and restart Discord?`,
+        confirmText: "Install and restart",
+        cancelText: "Later",
+        onConfirm: () => {
+            showToast("DiscordLyrics update started", Toasts.Type.MESSAGE);
+            void Native.installUpdate(version, release.body || "").catch(error => {
+                debugLog(`update install failed ${stringifyError(error)}`);
+                showToast("DiscordLyrics update could not start", Toasts.Type.FAILURE);
+            });
+        },
+        onCancel: () => void 0
+    }, React.createElement("div", {
+        style: {
+            display: "grid",
+            gap: "10px",
+            maxHeight: "260px",
+            overflow: "auto"
+        }
+    },
+        React.createElement("strong", null, "What's new"),
+        React.createElement("div", { style: { display: "grid", gap: "8px" } }, renderReleaseNotes(release.body || "")),
+        React.createElement("div", { style: { opacity: 0.72, fontSize: "12px" } }, release.html_url || `https://github.com/${REPO}/releases/latest`)
+    )));
+}
+
+async function showPendingUpdateNotice() {
+    const notice = await Native.readPendingUpdateNotice?.() as { version?: string; body?: string; } | null;
+    if (!notice?.version) return;
+
+    openModal(props => React.createElement(ConfirmModal, {
+        ...props,
+        title: "DiscordLyrics updated",
+        subtitle: `Version ${notice.version} is installed.`,
+        confirmText: "Nice",
+        cancelText: "Close",
+        onConfirm: () => void 0,
+        onCancel: () => void 0
+    }, React.createElement("div", {
+        style: {
+            display: "grid",
+            gap: "10px",
+            maxHeight: "280px",
+            overflow: "auto"
+        }
+    },
+        React.createElement("strong", null, "What's new"),
+        React.createElement("div", { style: { display: "grid", gap: "8px" } }, renderReleaseNotes(notice.body || ""))
+    )));
+}
+
+function UpdateSettingsControl() {
+    const [lastChecked, setLastChecked] = React.useState<string | null>(null);
+    const [latestVersion, setLatestVersion] = React.useState<string | null>(null);
+    const [checking, setChecking] = React.useState(false);
+
+    React.useEffect(() => {
+        let mounted = true;
+
+        void Promise.all([
+            DataStore.get<string>(LAST_UPDATE_CHECK_KEY),
+            DataStore.get<string>(LAST_UPDATE_VERSION_KEY)
+        ]).then(([storedLastChecked, storedLatestVersion]) => {
+            if (!mounted) return;
+            setLastChecked(storedLastChecked ?? null);
+            setLatestVersion(storedLatestVersion ?? null);
+        });
+
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    return React.createElement("div", {
+        style: {
+            display: "grid",
+            gap: "8px",
+            padding: "12px",
+            border: "1px solid var(--background-modifier-accent)",
+            borderRadius: "8px",
+            background: "var(--background-secondary)"
+        }
+    },
+        React.createElement(Button, {
+            color: Button.Colors.PRIMARY,
+            disabled: checking,
+            onClick: async () => {
+                setChecking(true);
+                const result = await checkForDiscordLyricsUpdate({ source: "manual" });
+                setLastChecked(result.checkedAt);
+                setLatestVersion(result.latest || ((await DataStore.get<string>(LAST_UPDATE_VERSION_KEY)) ?? null));
+                setChecking(false);
+            }
+        }, checking ? "Checking..." : "Check for updates"),
+        React.createElement("div", { style: { fontSize: "12px", opacity: 0.72 } }, `Current version: ${RELEASE_VERSION}`),
+        React.createElement("div", { style: { fontSize: "12px", opacity: 0.72 } }, `Latest on GitHub: ${latestVersion || "not checked"}`),
+        React.createElement("div", { style: { fontSize: "12px", opacity: 0.72 } }, formatLastChecked(lastChecked))
+    );
 }
 
 const settings = definePluginSettings({
@@ -486,16 +772,51 @@ function isWaitingStatus(status: string) {
     return /^\.{1,3}$/.test(status) || status === settings.store.loadingText || status === settings.store.noLyricsText;
 }
 
+function getCurrentCustomStatusText() {
+    try {
+        const value = getStatusSetting("customStatus")?.getSetting() as { text?: unknown; } | undefined;
+        return cleanText(value?.text);
+    } catch {
+        return "";
+    }
+}
+
+function forceRemoteStatus(status: string, reason: string) {
+    if (!status || isWaitingStatus(status)) return;
+
+    debugLog(`custom status force "${status}" ${reason}`);
+    lastRemoteStatusText = undefined;
+    lastRemoteStatusExpiresAt = 0;
+    setRemoteStatus(status, true);
+}
+
+function ensureRemoteStatusMatches(status: string) {
+    if (!status || isWaitingStatus(status)) return;
+
+    const currentStatus = getCurrentCustomStatusText();
+    if (currentStatus !== status) {
+        forceRemoteStatus(status, `actual="${currentStatus}"`);
+        return;
+    }
+
+    refreshRemoteStatusExpiration(status);
+}
+
 function setProfileStatus(text: string) {
     const status = truncateStatus(text);
     const waitingStatus = isWaitingStatus(status);
 
-    if (status === lastStatusText) return;
+    if (status === lastStatusText) {
+        ensureRemoteStatusMatches(status);
+        return;
+    }
     lastStatusText = status;
     debugLog(`local status "${status}"`);
 
     if (waitingStatus) {
         clearPendingWaitingRemoteStatus();
+    } else if (getCurrentCustomStatusText() !== status && lastRemoteStatusText === status) {
+        forceRemoteStatus(status, "cache-mismatch");
     } else {
         setRemoteStatus(status, true);
     }
@@ -512,6 +833,14 @@ function setProfileStatus(text: string) {
         } satisfies Activity : null,
         socketId: STATUS_SOCKET_ID,
     });
+}
+
+function refreshRemoteStatusExpiration(status: string) {
+    if (!status || isWaitingStatus(status)) return;
+    if (status !== lastRemoteStatusText) return;
+    if (Date.now() + STATUS_EXPIRATION_REFRESH_MS < lastRemoteStatusExpiresAt) return;
+
+    setRemoteStatus(status);
 }
 
 function clearPendingWaitingRemoteStatus() {
@@ -557,7 +886,10 @@ async function flushRemoteStatus() {
     }
 
     const status = pendingRemoteStatusText;
-    if (status === lastRemoteStatusText) return;
+    const shouldRefreshExpiration = Boolean(status)
+        && status === lastRemoteStatusText
+        && Date.now() + STATUS_EXPIRATION_REFRESH_MS >= lastRemoteStatusExpiresAt;
+    if (status === lastRemoteStatusText && !shouldRefreshExpiration) return;
 
     remoteStatusInFlight = true;
     debugLog(`custom status update start "${status}"`);
@@ -565,10 +897,20 @@ async function flushRemoteStatus() {
         const customStatus = getStatusSetting("customStatus");
         if (!customStatus) throw new Error("status.customStatus setting was not found");
 
-        await customStatus.updateSetting(status ? { text: status } : undefined);
+        if (status !== lastRemoteStatusText) {
+            await customStatus.updateSetting(status ? { text: status } : undefined);
+        }
 
         const expiresAtMs = getStatusSetting("statusExpiresAtMs");
-        if (expiresAtMs) await expiresAtMs.updateSetting("0");
+        if (expiresAtMs) {
+            if (status) {
+                lastRemoteStatusExpiresAt = Date.now() + STATUS_EXPIRATION_MS;
+                await expiresAtMs.updateSetting(String(lastRemoteStatusExpiresAt));
+            } else {
+                lastRemoteStatusExpiresAt = 0;
+                await expiresAtMs.updateSetting("0");
+            }
+        }
 
         const createdAtMs = getStatusSetting("statusCreatedAtMs");
         if (createdAtMs && status) await createdAtMs.updateSetting({ value: String(Date.now()) });
@@ -612,6 +954,7 @@ function getRetryAfterMs(error: unknown) {
 function clearRpc() {
     if (!lastRpcKey) return;
     lastRpcKey = "";
+    lastRpcStartedAt = 0;
     FluxDispatcher.dispatch({
         type: "LOCAL_ACTIVITY_UPDATE",
         activity: null,
@@ -619,8 +962,36 @@ function clearRpc() {
     });
 }
 
+function normalizeDurationMs(duration: unknown) {
+    const value = Number(duration || 0);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    return value < 10000 ? Math.round(value * 1000) : Math.round(value);
+}
+
+function rawSpotifyTrackKey(track: SpotifyTrack | null | undefined) {
+    if (!track?.name) return "";
+
+    const artists = track.artists?.map(artist => artist.name).filter(Boolean).join(", ") ?? "";
+    return [
+        cleanText(track.type || (track.show ? "episode" : "track")).toLowerCase(),
+        track.id ?? "",
+        cleanText(track.name).toLowerCase(),
+        cleanText(artists || track.show?.publisher || track.publisher).toLowerCase(),
+        Math.round(normalizeDurationMs(track.duration_ms ?? track.duration) / 1000)
+    ].join("|");
+}
+
+function getSpotifyImageAsset(url: string) {
+    const match = cleanText(url).match(/^https?:\/\/i\.scdn\.co\/image\/([a-z0-9]+)$/i);
+    return match ? `spotify:${match[1]}` : undefined;
+}
+
 function getAlbumAsset(track: NormalizedTrack) {
     if (!settings.store.rpcShowAlbumArt || !track.albumImage) return undefined;
+
+    const spotifyAsset = getSpotifyImageAsset(track.albumImage);
+    if (spotifyAsset) return spotifyAsset;
+
     if (albumAssetResolved.has(track.albumImage)) return albumAssetResolved.get(track.albumImage);
 
     if (!albumAssetCache.has(track.albumImage)) {
@@ -628,6 +999,7 @@ function getAlbumAsset(track: NormalizedTrack) {
             .then(ids => {
                 const asset = ids[0];
                 albumAssetResolved.set(track.albumImage, asset);
+                debugLog(`album art resolved "${track.albumImage}" -> "${asset ?? ""}"`);
                 const current = getCurrentTrack();
                 if (current && trackKey(current) === trackKey(track)) tick();
                 return asset;
@@ -648,29 +1020,38 @@ function updateRpc(track: NormalizedTrack, paused = false) {
         return;
     }
 
-    const largeImage = getAlbumAsset(track);
-    const progressBucket = Math.floor(track.progressMs / 1000);
-    const key = `${trackKey(track)}|${paused}|${largeImage ?? ""}|${progressBucket}`;
-    if (key === lastRpcKey) return;
+    const fallbackImage = !track.albumImage ? requestFallbackAlbumImage(track, paused) : undefined;
+    const rpcTrack = fallbackImage ? {
+        ...track,
+        albumImage: fallbackImage
+    } : track;
+    const largeImage = getAlbumAsset(rpcTrack);
+    const duration = normalizeDurationMs(rpcTrack.durationMs);
+    const progress = Math.max(0, duration ? Math.min(track.progressMs, duration) : track.progressMs);
+    const now = Date.now();
+    const startedAt = paused || !duration ? 0 : now - progress;
+    const key = `${trackKey(rpcTrack)}|${paused}|${largeImage ?? ""}|${duration}`;
+    const timingDrift = startedAt && lastRpcStartedAt ? Math.abs(startedAt - lastRpcStartedAt) : 0;
+    if (key === lastRpcKey && (!startedAt || timingDrift < 5000)) return;
     lastRpcKey = key;
+    lastRpcStartedAt = startedAt;
 
-    const progress = Math.max(0, track.progressMs);
     const rpcName = settings.store.rpcName === "Spotify Lyrics"
         ? DEFAULT_SETTINGS.rpcName
         : settings.store.rpcName || DEFAULT_SETTINGS.rpcName;
     const activity: Activity = {
         application_id: "0",
         name: rpcName,
-        details: paused ? `${settings.store.pausedPrefix}${track.title}` : track.title,
-        state: getTrackSubtitle(track),
+        details: paused ? `${settings.store.pausedPrefix}${rpcTrack.title}` : rpcTrack.title,
+        state: getTrackSubtitle(rpcTrack),
         type: ActivityType.LISTENING,
-        timestamps: paused || !track.durationMs ? undefined : {
-            start: Date.now() - progress,
-            end: Date.now() - progress + track.durationMs
+        timestamps: paused || !duration ? undefined : {
+            start: startedAt,
+            end: startedAt + duration
         },
         assets: largeImage ? {
             large_image: largeImage,
-            large_text: track.album || track.title
+            large_text: rpcTrack.album || rpcTrack.title
         } : undefined,
         status_display_type: ActivityStatusDisplayType.DETAILS,
         flags: ActivityFlags.INSTANCE
@@ -681,7 +1062,7 @@ function updateRpc(track: NormalizedTrack, paused = false) {
         activity,
         socketId: RPC_SOCKET_ID,
     });
-    debugLog(`rpc update ${paused ? "paused" : "playing"} "${track.title}" ${Math.round(track.progressMs)}ms`);
+    debugLog(`rpc update ${paused ? "paused" : "playing"} "${track.title}" progress=${Math.round(progress)}ms duration=${duration}ms start=${startedAt || ""} image=${largeImage ?? ""}`);
 }
 
 function getTrackSubtitle(track: NormalizedTrack) {
@@ -689,16 +1070,194 @@ function getTrackSubtitle(track: NormalizedTrack) {
     return track.artist || track.album || spotifyContentLabel(track);
 }
 
+function fallbackAlbumImageKey(track: NormalizedTrack) {
+    return `${comparableMediaText(track.title)}|${comparableMediaText(firstArtist(track.artist))}|${comparableMediaText(track.album)}`;
+}
+
+async function lookupFallbackAlbumImage(track: NormalizedTrack) {
+    const key = fallbackAlbumImageKey(track);
+    if (!key.replace(/\|/g, "")) return undefined;
+    if (fallbackAlbumImageCache.has(key)) return fallbackAlbumImageCache.get(key);
+    if (fallbackAlbumImageRequests.has(key)) return fallbackAlbumImageRequests.get(key);
+
+    const request = (async () => {
+        try {
+            const searchAlbumImage = Native?.searchAlbumImage as ((title: string, artist: string, album: string) => Promise<string>) | undefined;
+            const url = searchAlbumImage ? cleanText(await searchAlbumImage(track.title, track.artist, track.album)) : undefined;
+            fallbackAlbumImageCache.set(key, url);
+            return url;
+        } catch (error) {
+            debugLog(`fallback album art failed ${stringifyError(error)}`);
+            fallbackAlbumImageCache.set(key, undefined);
+            return undefined;
+        } finally {
+            fallbackAlbumImageRequests.delete(key);
+        }
+    })();
+
+    fallbackAlbumImageRequests.set(key, request);
+    return request;
+}
+
+function requestFallbackAlbumImage(track: NormalizedTrack, paused: boolean) {
+    const key = fallbackAlbumImageKey(track);
+    const cached = fallbackAlbumImageCache.get(key);
+    if (cached) return cached;
+
+    void lookupFallbackAlbumImage(track).then(url => {
+        if (!url) return;
+
+        const enriched = rememberSpotifyTrack({
+            ...track,
+            albumImage: url
+        });
+        if (windowsSpotifyTrack && trackKey(windowsSpotifyTrack) === trackKey(track)) {
+            windowsSpotifyTrack = enriched;
+            windowsSpotifyTrackReceivedAt = Date.now();
+        }
+
+        lastRpcKey = "";
+        updateRpc(enriched, paused);
+    });
+
+    return undefined;
+}
+
+function normalizeWindowsSpotifyTrack(state: WindowsSpotifyState): NormalizedTrack | undefined {
+    const media = state.track;
+    const title = cleanText(media?.title);
+    if (!title) return undefined;
+
+    const status = cleanText(media?.status).toLowerCase();
+    const progressMs = Number(media?.positionMs ?? 0) + getStoredNumber("lyricOffsetMs", DEFAULT_SETTINGS.lyricOffsetMs);
+
+    const fallback = findLastKnownTrackForMedia(title, cleanText(media?.artist));
+
+    return {
+        id: "",
+        title,
+        artist: cleanText(media?.artist),
+        album: cleanText(media?.album) || fallback?.album || "",
+        albumImage: fallback?.albumImage || "",
+        contentType: "track",
+        description: "",
+        durationMs: normalizeDurationMs(media?.durationMs) || fallback?.durationMs || 0,
+        progressMs: Math.max(0, progressMs),
+        isPlaying: status === "playing"
+    };
+}
+
+function comparableMediaText(value: string) {
+    return cleanComparable(value || "");
+}
+
+function findLastKnownTrackForMedia(title: string, artist: string) {
+    if (!lastKnownSpotifyTrack) return undefined;
+
+    const mediaTitle = comparableMediaText(title);
+    const knownTitle = comparableMediaText(lastKnownSpotifyTrack.title);
+    if (!mediaTitle || !knownTitle || mediaTitle !== knownTitle) return undefined;
+
+    const mediaArtist = firstArtist(artist);
+    const knownArtist = firstArtist(lastKnownSpotifyTrack.artist);
+    if (mediaArtist && knownArtist && comparableMediaText(mediaArtist) !== comparableMediaText(knownArtist)) return undefined;
+
+    return lastKnownSpotifyTrack;
+}
+
+function rememberSpotifyTrack(track: NormalizedTrack) {
+    if (!track.albumImage && lastKnownSpotifyTrack) {
+        const fallback = findLastKnownTrackForMedia(track.title, track.artist);
+        if (fallback?.albumImage) {
+            track = {
+                ...track,
+                id: track.id || fallback.id,
+                album: track.album || fallback.album,
+                albumImage: fallback.albumImage,
+                durationMs: normalizeDurationMs(track.durationMs) || fallback.durationMs
+            };
+        }
+    }
+
+    lastKnownSpotifyTrack = track;
+    lastKnownSpotifyTrackAt = Date.now();
+    return track;
+}
+
+async function pollWindowsSpotifyState(force = false) {
+    const now = Date.now();
+    if (windowsSpotifyPollInFlight || (!force && now - lastWindowsSpotifyPollAt < WINDOWS_SPOTIFY_POLL_INTERVAL_MS)) return;
+
+    const getWindowsSpotifyState = Native?.getWindowsSpotifyState as (() => Promise<WindowsSpotifyState>) | undefined;
+    if (!getWindowsSpotifyState) return;
+
+    windowsSpotifyPollInFlight = true;
+    lastWindowsSpotifyPollAt = now;
+
+    try {
+        const state = await getWindowsSpotifyState();
+        windowsSpotifyProcessRunning = Boolean(state?.processRunning);
+        if (windowsSpotifyProcessRunning) windowsSpotifyProcessSeenAt = Date.now();
+        const track = normalizeWindowsSpotifyTrack(state ?? {});
+
+        if (track) {
+            windowsSpotifyTrack = rememberSpotifyTrack(track);
+            windowsSpotifyTrackReceivedAt = Date.now();
+            spotifyUnavailableAt = 0;
+            debugLog(`windows spotify ${windowsSpotifyTrack.isPlaying ? "playing" : "paused"} "${windowsSpotifyTrack.title}" ${Math.round(windowsSpotifyTrack.progressMs)}ms`);
+            tick();
+            return;
+        }
+
+        if (!windowsSpotifyProcessRunning && Date.now() - windowsSpotifyProcessSeenAt > WINDOWS_SPOTIFY_PROCESS_GRACE_MS) {
+            windowsSpotifyTrack = undefined;
+            windowsSpotifyTrackReceivedAt = 0;
+        }
+    } catch (error) {
+        debugLog(`windows spotify check failed ${stringifyError(error)}`);
+    } finally {
+        windowsSpotifyPollInFlight = false;
+    }
+}
+
 function getCurrentTrack(): NormalizedTrack | undefined {
     const stateAge = spotifyState?.receivedAt ? Date.now() - spotifyState.receivedAt : Number.POSITIVE_INFINITY;
-    const useState = Boolean(spotifyState?.track && stateAge < 5000);
-    const track: SpotifyTrack | null = useState ? spotifyState!.track : SpotifyStore.track ?? spotifyState?.track ?? null;
-    if (!track) return undefined;
+    const recentlyUnavailable = spotifyUnavailableAt > 0 && Date.now() - spotifyUnavailableAt < SPOTIFY_UNAVAILABLE_GRACE_MS;
+    const stateTrack = spotifyState?.track ?? null;
+    const storeTrack = SpotifyStore.track ?? null;
+    const storePosition = Number(SpotifyStore.position ?? NaN);
+    const storeHasPosition = Number.isFinite(storePosition) && storePosition >= 0;
+    const storeRawKey = rawSpotifyTrackKey(storeTrack);
+    const storeHasTrack = Boolean(storeTrack?.name)
+        && (!recentlyUnavailable || Boolean(SpotifyStore.isPlaying) || (storeRawKey && storeRawKey !== lastTrackKey));
+    const storeChangedTrack = storeHasTrack
+        && Boolean(stateTrack?.name)
+        && storeRawKey !== rawSpotifyTrackKey(stateTrack);
+    const useState = Boolean(stateTrack && stateAge < SPOTIFY_STATE_FRESH_MS && !storeChangedTrack);
+    const useStore = !useState && storeHasTrack;
+    const track: SpotifyTrack | null = useStore ? storeTrack : useState ? stateTrack : null;
+    if (!track) {
+        if (windowsSpotifyTrack && Date.now() - windowsSpotifyTrackReceivedAt < WINDOWS_SPOTIFY_STATE_FRESH_MS) {
+            return windowsSpotifyTrack;
+        }
 
-    const isPlaying = useState ? Boolean(spotifyState!.isPlaying) : Boolean(SpotifyStore.isPlaying);
-    const rawPosition = useState
-        ? Number(spotifyState!.position || 0) + (isPlaying ? Math.max(0, stateAge) : 0)
-        : Number(SpotifyStore.position ?? 0);
+        if (
+            (windowsSpotifyProcessRunning || Date.now() - windowsSpotifyProcessSeenAt < WINDOWS_SPOTIFY_PROCESS_GRACE_MS)
+            && lastKnownSpotifyTrack
+            && Date.now() - lastKnownSpotifyTrackAt < LAST_KNOWN_SPOTIFY_TRACK_MS
+        ) {
+            return {
+                ...lastKnownSpotifyTrack,
+                isPlaying: false
+            };
+        }
+
+        return undefined;
+    }
+
+    const isPlaying = useStore ? Boolean(SpotifyStore.isPlaying) : Boolean(spotifyState!.isPlaying);
+    const statePosition = Number(spotifyState?.position || 0) + (isPlaying && spotifyState?.receivedAt ? Math.max(0, stateAge) : 0);
+    const rawPosition = useStore && storeHasPosition ? storePosition : statePosition;
     const position = rawPosition + getStoredNumber("lyricOffsetMs", DEFAULT_SETTINGS.lyricOffsetMs);
     const artists = track.artists?.map(artist => artist.name).filter(Boolean).join(", ") ?? "";
     const contentType = cleanText(track.type || (track.show ? "episode" : "track")).toLowerCase();
@@ -712,7 +1271,7 @@ function getCurrentTrack(): NormalizedTrack | undefined {
     );
     const description = cleanDescription(track.description || track.html_description);
 
-    return {
+    const normalized = {
         id: track.id ?? "",
         title: cleanText(track.name),
         artist: creator,
@@ -720,14 +1279,18 @@ function getCurrentTrack(): NormalizedTrack | undefined {
         albumImage,
         contentType,
         description,
-        durationMs: Number(track.duration || track.duration_ms || 0),
+        durationMs: normalizeDurationMs(track.duration_ms ?? track.duration),
         progressMs: Math.max(0, position),
         isPlaying
     };
+
+    rememberSpotifyTrack(normalized);
+    return normalized;
 }
 
 async function pollSpotifyPlayer(force = false) {
     const now = Date.now();
+    if (!force && now < spotifyPollMutedUntil) return;
     if (spotifyPollInFlight || (!force && now - lastSpotifyPollAt < SPOTIFY_POLL_INTERVAL_MS)) return;
 
     const request = (SpotifyStore as unknown as {
@@ -760,9 +1323,20 @@ async function pollSpotifyPlayer(force = false) {
 
     try {
         const player = await request.call(SpotifyStore, "get", "/currently-playing");
-        if (!player?.item) return;
+        if (!player?.item) {
+            const stateAge = spotifyState?.receivedAt ? Date.now() - spotifyState.receivedAt : Number.POSITIVE_INFINITY;
+            if ((spotifyState?.track && stateAge < SPOTIFY_STATE_FRESH_MS) || SpotifyStore.track?.name) {
+                return;
+            }
+
+            spotifyState = undefined;
+            spotifyUnavailableAt = Date.now();
+            tick();
+            return;
+        }
 
         const image = player.item.album?.images?.[0];
+        spotifyUnavailableAt = 0;
         spotifyState = {
             track: {
                 id: player.item.id ?? null,
@@ -791,6 +1365,7 @@ async function pollSpotifyPlayer(force = false) {
         tick();
     } catch (error) {
         debugLog(`spotify poll failed ${stringifyError(error)}`);
+        spotifyPollMutedUntil = Date.now() + 10000;
     } finally {
         spotifyPollInFlight = false;
     }
@@ -808,6 +1383,36 @@ function trackKey(track: NormalizedTrack) {
 
 function supportsSyncedLyrics(track: NormalizedTrack) {
     return !track.contentType || track.contentType === "track" || track.contentType === "song";
+}
+
+function clearProfileStatusForTrackChange() {
+    lastStatusText = "";
+    nextRemoteStatusAt = 0;
+    setRemoteStatus("", true);
+    FluxDispatcher.dispatch({
+        type: "LOCAL_ACTIVITY_UPDATE",
+        activity: null,
+        socketId: STATUS_SOCKET_ID,
+    });
+}
+
+function prepareTrack(track: NormalizedTrack) {
+    const key = trackKey(track);
+    if (key === lastTrackKey) return false;
+
+    debugLog(`track change "${track.title}"`);
+    lastTrackKey = key;
+    lyrics = [];
+    clearProfileStatusForTrackChange();
+
+    if (supportsSyncedLyrics(track)) {
+        loadingTrackKey = key;
+        void loadLyrics(track);
+    } else {
+        loadingTrackKey = "";
+    }
+
+    return true;
 }
 
 function spotifyContentLabel(track: NormalizedTrack) {
@@ -1105,11 +1710,19 @@ function lyricAt(progressMs: number): ActiveLyricLine | undefined {
 
 function tick() {
     void pollSpotifyPlayer();
+    void pollWindowsSpotifyState();
 
     const track = getCurrentTrack();
 
     if (!track) {
         lastPlaybackPlaying = undefined;
+        if (!windowsSpotifyProcessRunning && Date.now() - windowsSpotifyProcessSeenAt > WINDOWS_SPOTIFY_PROCESS_GRACE_MS) {
+            lastTrackKey = "";
+            loadingTrackKey = "";
+            lyrics = [];
+            lastKnownSpotifyTrack = undefined;
+            lastKnownSpotifyTrackAt = 0;
+        }
         setProfileStatus("");
         clearRpc();
         return;
@@ -1127,16 +1740,7 @@ function tick() {
     lastPlaybackPlaying = true;
 
     const key = trackKey(track);
-    if (key !== lastTrackKey) {
-        lastTrackKey = key;
-        lyrics = [];
-        if (supportsSyncedLyrics(track)) {
-            loadingTrackKey = key;
-            void loadLyrics(track);
-        } else {
-            loadingTrackKey = "";
-        }
-    }
+    if (key !== lastTrackKey) prepareTrack(track);
 
     updateRpc(track);
 
@@ -1173,9 +1777,29 @@ function tick() {
 }
 
 function onSpotifyPlayerState(event: SpotifyStateEvent) {
+    if (!event?.track) {
+        spotifyState = undefined;
+        spotifyUnavailableAt = Date.now();
+        debugLog("spotify event cleared");
+        void pollWindowsSpotifyState(true).then(() => tick());
+        return;
+    }
+
+    spotifyUnavailableAt = 0;
     spotifyState = { ...event, receivedAt: Date.now() };
     debugLog(`spotify event ${event.isPlaying ? "playing" : "paused"} "${event.track?.name ?? ""}" ${event.position}ms`);
+    const track = getCurrentTrack();
+    if (track) rememberSpotifyTrack(track);
+    if (track?.isPlaying) prepareTrack(track);
     tick();
+}
+
+function clearStatusForShutdown() {
+    pendingRemoteStatusText = "";
+    lastStatusText = "";
+    setProfileStatus("");
+    void flushRemoteStatus();
+    clearRpc();
 }
 
 updatePluginAuthor();
@@ -1187,6 +1811,7 @@ export default definePlugin({
     tags: ["Spotify", "Media"],
     dependencies: ["SpotifyControls", "UserSettingsAPI"],
     settings,
+    settingsAboutComponent: UpdateSettingsControl,
 
     start() {
         updatePluginAuthor();
@@ -1195,6 +1820,11 @@ export default definePlugin({
         logStatusUserSettings();
         setRemoteStatus("");
         void pollSpotifyPlayer(true);
+        void pollWindowsSpotifyState(true);
+        window.setTimeout(() => void pollWindowsSpotifyState(true), 2000);
+        window.setTimeout(() => void pollWindowsSpotifyState(true), 5000);
+        void showPendingUpdateNotice();
+        window.setTimeout(() => void checkForDiscordLyricsUpdateOnStartup(), 7000);
         tick();
         showToast("SpotifyLyricsStatus started", Toasts.Type.SUCCESS);
     },
@@ -1208,11 +1838,15 @@ export default definePlugin({
         fetchController?.abort();
         fetchController = undefined;
         spotifyState = undefined;
+        windowsSpotifyTrack = undefined;
+        windowsSpotifyTrackReceivedAt = 0;
+        windowsSpotifyProcessRunning = false;
+        lastKnownSpotifyTrack = undefined;
+        lastKnownSpotifyTrackAt = 0;
         lyrics = [];
         lastTrackKey = "";
         loadingTrackKey = "";
         lastPlaybackPlaying = undefined;
-        setProfileStatus("");
-        clearRpc();
+        clearStatusForShutdown();
     }
 });
