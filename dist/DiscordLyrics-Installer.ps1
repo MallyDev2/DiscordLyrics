@@ -91,6 +91,7 @@ function Invoke-CheckedCommand {
     $StartInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $StartInfo.FileName = "$env:ComSpec"
     $StartInfo.Arguments = "/d /s /c `"$CommandLine 2>&1`""
+    $StartInfo.WorkingDirectory = (Get-Location).ProviderPath
     $StartInfo.UseShellExecute = $false
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.CreateNoWindow = $true
