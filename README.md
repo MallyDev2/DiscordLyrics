@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="IMG_9016.webp" alt="DiscordLyrics by MallyDev2" width="100%">
+  <img src="assets/IMG_9016.webp" alt="DiscordLyrics by MallyDev2" width="100%">
 </p>
 
 <h1 align="center">DiscordLyrics</h1>
@@ -97,4 +97,4 @@ https://github.com/sponsors/MallyDev2
 
 ## License
 
-Released under the [GPL-3.0 icense](LICENSE).
+Released under the [GPL-3.0 License](LICENSE).
