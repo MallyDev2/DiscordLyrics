@@ -2,7 +2,7 @@
  * @name DiscordLyrics
  * @author mally
  * @description Sets your Discord custom status to the current synced lyric from Spotify, or a pause status when playback stops.
- * @version 1.0.4
+ * @version 1.0.5
  * @source https://lrclib.net
  */
 
@@ -14,7 +14,7 @@ const { execFile, spawn } = require("child_process");
 module.exports = class DiscordLyrics {
     constructor() {
         this.name = "DiscordLyrics";
-        this.version = "1.0.4";
+        this.version = "1.0.5";
         this.repo = "MallyDev2/DiscordLyrics";
         this.latestReleaseApi = `https://api.github.com/repos/${this.repo}/releases/latest`;
         this.interval = null;
