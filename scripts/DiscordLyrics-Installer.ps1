@@ -87,27 +87,32 @@ function Invoke-CheckedCommand {
     )
 
     $ResolvedCommand = Resolve-NativeCommand -Command $Command
+    $CommandLine = Join-CommandLine -Command $ResolvedCommand -Arguments $Arguments
     $StartInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $StartInfo.FileName = $ResolvedCommand
-    $StartInfo.Arguments = ($Arguments | ForEach-Object { ConvertTo-CommandArgument $_ }) -join " "
+    $StartInfo.FileName = "$env:ComSpec"
+    $StartInfo.Arguments = "/d /s /c `"$CommandLine 2>&1`""
     $StartInfo.UseShellExecute = $false
     $StartInfo.RedirectStandardOutput = $true
-    $StartInfo.RedirectStandardError = $true
     $StartInfo.CreateNoWindow = $true
 
     $Process = [System.Diagnostics.Process]::new()
     $Process.StartInfo = $StartInfo
+    $Output = [System.Collections.Generic.List[string]]::new()
     [void]$Process.Start()
-    $StdOut = $Process.StandardOutput.ReadToEnd()
-    $StdErr = $Process.StandardError.ReadToEnd()
+
+    while (!$Process.StandardOutput.EndOfStream) {
+        $Line = $Process.StandardOutput.ReadLine()
+        if ($null -ne $Line) {
+            $Output.Add($Line)
+            Write-Host $Line
+        }
+    }
+
     $Process.WaitForExit()
     $ExitCode = $Process.ExitCode
     $Process.Dispose()
 
-    $Text = (@($StdOut, $StdErr) | Where-Object { $_ }) -join [Environment]::NewLine
-    if ($Text) {
-        Write-Host ($Text.TrimEnd())
-    }
+    $Text = ($Output | ForEach-Object { "$_" }) -join [Environment]::NewLine
 
     if ($ExitCode -ne 0) {
         throw "$Command $($Arguments -join ' ') failed with exit code $ExitCode."
