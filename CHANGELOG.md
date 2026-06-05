@@ -1,24 +1,17 @@
 # Changelog
 
-## 1.0.6
-
-- Forced source-client installs to use the native pnpm command path during install, build, and inject.
-- Cleared the temporary installer download folder before fetching a fresh installer.
-- Fixed pnpm warnings being treated as installer failures on Windows PowerShell.
-- Fixed the installer UI download path so it avoids stale loose temp scripts.
-- Fixed pnpm build-approval failures during source-client installs.
-
-## 1.0.5
-
-- Fixed the Windows installer so pnpm warnings no longer get treated as a failed build.
-- Updated command handling to prefer native `.cmd` shims instead of PowerShell package-manager shims.
-
 ## 1.0.4
 
 - Added a Discord-styled progress window for update installs.
 - Show installer output inside the update window while Discord closes, updates, and reopens.
 - Updated the automatic updater to launch the UI installer directly from the GitHub release.
 - Kept the command-line installer path available for manual installs.
+- Forced source-client installs to use the native pnpm command path during install, build, and inject.
+- Cleared the temporary installer download folder before fetching a fresh installer.
+- Fixed pnpm warnings being treated as installer failures on Windows PowerShell.
+- Fixed the installer UI download path so it avoids stale loose temp scripts.
+- Fixed pnpm build-approval failures during source-client installs.
+- Fixed source-client builds so pnpm runs from the selected client folder instead of the installer launch folder.
 
 ## 1.0.3
 
