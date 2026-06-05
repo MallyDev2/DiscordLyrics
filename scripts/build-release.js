@@ -219,6 +219,9 @@ copyFile(path.join(dist, "DiscordLyrics-Installer-UI.ps1"), path.join(packageDir
 copyFile(path.join(dist, "DiscordLyrics-Installer.vbs"), path.join(packageDir, "DiscordLyrics-Installer.vbs"));
 copyFile(path.join(dist, "DiscordLyrics-Installer.cmd"), path.join(packageDir, "DiscordLyrics-Installer.cmd"));
 copyFile(path.join(root, "README.md"), path.join(packageDir, "README.md"));
+if (fs.existsSync(path.join(root, "IMG_9016.webp"))) {
+  copyFile(path.join(root, "IMG_9016.webp"), path.join(packageDir, "IMG_9016.webp"));
+}
 copyFile(path.join(root, "LICENSE"), path.join(packageDir, "LICENSE"));
 copyFile(path.join(root, "CHANGELOG.md"), path.join(packageDir, "CHANGELOG.md"));
 createZip(packageDir, path.join(dist, "DiscordLyrics-release.zip"));
