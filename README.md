@@ -97,4 +97,4 @@ https://github.com/sponsors/MallyDev2
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [GPL-3.0 icense](LICENSE).
