@@ -11,11 +11,20 @@ import { join } from "path";
 import { promisify } from "util";
 
 const debugLogPath = join(process.env.USERPROFILE ?? process.cwd(), "Desktop", "DiscordLyrics", "spotify-lyrics-debug.log");
-const appDataDir = join(process.env.APPDATA ?? join(process.env.USERPROFILE ?? process.cwd(), "AppData", "Roaming"), "DiscordLyrics");
+const appDataRoots = Array.from(new Set([
+    process.env.APPDATA,
+    process.env.USERPROFILE ? join(process.env.USERPROFILE, "AppData", "Roaming") : "",
+    process.env.HOME ? join(process.env.HOME, "AppData", "Roaming") : ""
+].filter(Boolean) as string[]));
+const appDataDir = join(appDataRoots[0] ?? join(process.env.USERPROFILE ?? process.cwd(), "AppData", "Roaming"), "DiscordLyrics");
+const pendingUpdatePaths = appDataRoots.map(root => join(root, "DiscordLyrics", "pending-update.json"));
 const installProfilePath = join(appDataDir, "install-profile.json");
 const pendingUpdatePath = join(appDataDir, "pending-update.json");
 const updateInstallerPath = join(appDataDir, "DiscordLyrics-Installer.ps1");
 const updateNotesPath = join(appDataDir, "update-notes.txt");
+const updateLogPath = join(appDataDir, "update-install.log");
+const updateLauncherPath = join(appDataDir, "update-launch.vbs");
+const updateRunnerPath = join(appDataDir, "update-run.ps1");
 const execFileAsync = promisify(execFile);
 
 export async function fetchJson(_: IpcMainInvokeEvent, url: string) {
@@ -139,6 +148,7 @@ export async function installUpdate(_: IpcMainInvokeEvent, version: string, body
     await mkdir(appDataDir, { recursive: true });
     await unlink(pendingUpdatePath).catch(() => void 0);
     await writeFile(updateNotesPath, String(body || ""), "utf8");
+    await writeFile(updateLogPath, `DiscordLyrics update started ${new Date().toISOString()}\n`, "utf8");
 
     let profile: { target?: string; sourcePath?: string; };
     try {
@@ -150,40 +160,90 @@ export async function installUpdate(_: IpcMainInvokeEvent, version: string, body
     const response = await fetch("https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.ps1");
     if (!response.ok) throw new Error(`Installer download returned ${response.status}`);
     await writeFile(updateInstallerPath, await response.text(), "utf8");
+    await writeFile(updateLogPath, `Installer script downloaded ${new Date().toISOString()}\n`, { flag: "a" });
 
     const target = ["Vencord", "Equicord", "Dorian"].includes(String(profile.target || ""))
         ? String(profile.target)
         : "Vencord";
 
-    const args = [
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", updateInstallerPath,
-        "-Target", target,
-        "-NonInteractive",
-        "-UpdateVersion", String(version || ""),
-        "-UpdateNotesPath", updateNotesPath
-    ];
+    const installerParams: Record<string, string | boolean> = {
+        Target: target,
+        NonInteractive: true,
+        UpdateVersion: String(version || ""),
+        UpdateNotesPath: updateNotesPath
+    };
 
-    if (profile.sourcePath) args.push("-SourcePath", profile.sourcePath);
+    if (profile.sourcePath) installerParams.SourcePath = profile.sourcePath;
 
-    spawn("powershell.exe", args, {
+    const quotePs = (value: string) => `'${String(value).replace(/'/g, "''")}'`;
+    const paramLines = Object.entries(installerParams).map(([key, value]) => {
+        if (typeof value === "boolean") return `    ${key} = $${value ? "true" : "false"}`;
+        return `    ${key} = ${quotePs(value)}`;
+    });
+    const runner = [
+        "$ErrorActionPreference = 'Continue'",
+        `$LogPath = ${quotePs(updateLogPath)}`,
+        `Start-Transcript -Path $LogPath -Append | Out-Null`,
+        "try {",
+        `  $Installer = ${quotePs(updateInstallerPath)}`,
+        "  $InstallerParams = @{",
+        ...paramLines,
+        "  }",
+        "  & $Installer @InstallerParams",
+        "  exit $LASTEXITCODE",
+        "} finally {",
+        "  Stop-Transcript | Out-Null",
+        "}"
+    ].join("\r\n");
+
+    await writeFile(updateRunnerPath, runner, "utf8");
+
+    const quoteVbs = (value: string) => `"${String(value).replace(/"/g, "\"\"")}"`;
+    const quoteWin = (value: string) => `"${String(value).replace(/"/g, "\\\"")}"`;
+    const commandLine = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quoteWin(updateRunnerPath)}`;
+    const launcher = [
+        "Set shell = CreateObject(\"WScript.Shell\")",
+        `shell.Run ${quoteVbs(commandLine)}, 0, False`
+    ].join("\r\n");
+
+    await writeFile(updateLauncherPath, launcher, "utf8");
+    await writeFile(updateLogPath, `Hidden installer launcher written ${new Date().toISOString()}\n`, { flag: "a" });
+
+    const child = spawn("wscript.exe", [updateLauncherPath], {
         detached: true,
         windowsHide: true,
         stdio: "ignore"
-    }).unref();
+    });
+
+    child.unref();
 
     return true;
 }
 
 export async function readPendingUpdateNotice() {
-    try {
-        const notice = JSON.parse(await readFile(pendingUpdatePath, "utf8"));
-        await unlink(pendingUpdatePath).catch(() => void 0);
-        return notice;
-    } catch {
-        return null;
+    const errors: string[] = [];
+    const candidates = Array.from(new Set([pendingUpdatePath, ...pendingUpdatePaths]));
+    for (const candidate of candidates) {
+        try {
+            const notice = JSON.parse((await readFile(candidate, "utf8")).replace(/^\uFEFF/, ""));
+            return notice;
+        } catch (error) {
+            errors.push(`${candidate}: ${String(error)}`);
+        }
     }
+
+    try {
+        await mkdir(appDataDir, { recursive: true });
+    } catch {
+        void 0;
+    }
+
+    return { error: "No pending update notice found", paths: candidates, errors };
+}
+
+export async function clearPendingUpdateNotice() {
+    await Promise.all(Array.from(new Set([pendingUpdatePath, ...pendingUpdatePaths])).map(path => unlink(path).catch(() => void 0)));
+    return true;
 }
 
 export async function getWindowsSpotifyState() {

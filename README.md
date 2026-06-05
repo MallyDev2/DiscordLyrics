@@ -65,7 +65,7 @@ irm https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordL
 1. Download `SpotifyLyricsStatus.plugin.js`.
 2. Move it into your BetterDiscord plugins folder.
 3. Reload Discord with `Ctrl+R`.
-4. Enable `SpotifyLyricsStatus`.
+4. Enable `DiscordLyrics`.
 5. Make sure Spotify is connected to Discord and visible as your activity.
 
 Common plugin folders:
@@ -92,7 +92,7 @@ Linux: ~/.config/BetterDiscord/plugins
    pnpm build
    ```
 
-5. Reinstall or inject your custom Vencord build, restart Discord, then enable `SpotifyLyricsStatus`.
+5. Reinstall or inject your custom Vencord build, restart Discord, then enable `DiscordLyrics`.
 
 ## How It Works
 

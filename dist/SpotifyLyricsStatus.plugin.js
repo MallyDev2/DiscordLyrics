@@ -1,5 +1,5 @@
 ﻿/**
- * @name SpotifyLyricsStatus
+ * @name DiscordLyrics
  * @author mally
  * @description Sets your Discord custom status to the current synced lyric from Spotify, or a pause status when playback stops.
  * @version 1.0.3
@@ -11,9 +11,9 @@ const os = require("os");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
 
-module.exports = class SpotifyLyricsStatus {
+module.exports = class DiscordLyrics {
     constructor() {
-        this.name = "SpotifyLyricsStatus";
+        this.name = "DiscordLyrics";
         this.version = "1.0.3";
         this.repo = "MallyDev2/DiscordLyrics";
         this.latestReleaseApi = `https://api.github.com/repos/${this.repo}/releases/latest`;
@@ -47,6 +47,10 @@ module.exports = class SpotifyLyricsStatus {
         this.pendingUpdatePath = path.join(this.stateDir, "pending-update.json");
         this.updateNotesPath = path.join(this.stateDir, "update-notes.txt");
         this.updateInstallerPath = path.join(this.stateDir, "DiscordLyrics-Installer.ps1");
+        this.updateLogPath = path.join(this.stateDir, "update-install.log");
+        this.updateLauncherPath = path.join(this.stateDir, "update-launch.vbs");
+        this.updateRunnerPath = path.join(this.stateDir, "update-run.ps1");
+        this.pendingUpdateNoticeOpen = false;
 
         this.config = {
             tickMs: 1000,
@@ -69,12 +73,12 @@ module.exports = class SpotifyLyricsStatus {
         this.findModules();
         this.subscribeSpotifyState();
         this.interval = setInterval(() => this.tick(), this.config.tickMs);
-        this.showPendingUpdateNotice();
+        setTimeout(() => this.showPendingUpdateNotice(), 2500);
         this.tick();
         setTimeout(() => this.pollWindowsSpotifyState(true), 1000);
         setTimeout(() => this.pollWindowsSpotifyState(true), 3000);
         setTimeout(() => this.checkForUpdatesOnStartup(), 7000);
-        BdApi.showToast("Spotify Lyrics Status started", { type: "success" });
+        BdApi.showToast("DiscordLyrics started", { type: "success" });
     }
 
     stop() {
@@ -98,7 +102,7 @@ module.exports = class SpotifyLyricsStatus {
         this.spotifyState = null;
 
         this.clearStatusForShutdown();
-        BdApi.showToast("Spotify Lyrics Status stopped", { type: "info" });
+        BdApi.showToast("DiscordLyrics stopped", { type: "info" });
     }
 
     clearStatusForShutdown = () => {
@@ -442,6 +446,7 @@ try {
     }
 
     showUpdateFoundModal(version, release) {
+        const theme = this.getThemeStyles();
         BdApi.UI.showConfirmationModal(
             "Update found",
             BdApi.React.createElement("div", {
@@ -449,13 +454,14 @@ try {
                     display: "grid",
                     gap: "10px",
                     maxHeight: "280px",
-                    overflow: "auto"
+                    overflow: "auto",
+                    color: theme.text
                 }
             },
                 BdApi.React.createElement("div", null, `DiscordLyrics ${version} is available. Install it and restart Discord?`),
-                BdApi.React.createElement("strong", null, "What's new"),
+                BdApi.React.createElement("strong", { style: { color: theme.heading } }, "What's new"),
                 BdApi.React.createElement("div", { style: { display: "grid", gap: "8px" } }, this.renderReleaseNotes(release.body || "")),
-                BdApi.React.createElement("div", { style: { opacity: 0.72, fontSize: "12px" } }, release.html_url || `https://github.com/${this.repo}/releases/latest`)
+                BdApi.React.createElement("div", { style: { color: theme.muted, fontSize: "12px" } }, release.html_url || `https://github.com/${this.repo}/releases/latest`)
             ),
             {
                 confirmText: "Install and restart",
@@ -470,6 +476,7 @@ try {
             fs.mkdirSync(this.stateDir, { recursive: true });
             fs.rmSync(this.pendingUpdatePath, { force: true });
             fs.writeFileSync(this.updateNotesPath, String(body || ""), "utf8");
+            fs.writeFileSync(this.updateLogPath, `DiscordLyrics update started ${new Date().toISOString()}\n`, "utf8");
 
             let profile = {};
             try {
@@ -481,24 +488,58 @@ try {
             const response = await fetch(`https://github.com/${this.repo}/releases/latest/download/DiscordLyrics-Installer.ps1`);
             if (!response.ok) throw new Error(`Installer download returned ${response.status}`);
             fs.writeFileSync(this.updateInstallerPath, await response.text(), "utf8");
+            fs.appendFileSync(this.updateLogPath, `Installer script downloaded ${new Date().toISOString()}\n`);
 
-            const args = [
-                "-NoProfile",
-                "-ExecutionPolicy", "Bypass",
-                "-File", this.updateInstallerPath,
-                "-Target", "BetterDiscord",
-                "-NonInteractive",
-                "-UpdateVersion", String(version || ""),
-                "-UpdateNotesPath", this.updateNotesPath
-            ];
+            const installerParams = {
+                Target: "BetterDiscord",
+                NonInteractive: true,
+                UpdateVersion: String(version || ""),
+                UpdateNotesPath: this.updateNotesPath
+            };
 
-            if (profile.sourcePath) args.push("-SourcePath", profile.sourcePath);
+            if (profile.sourcePath) installerParams.SourcePath = profile.sourcePath;
 
-            spawn("powershell.exe", args, {
+            const quotePs = value => `'${String(value).replace(/'/g, "''")}'`;
+            const paramLines = Object.entries(installerParams).map(([key, value]) => {
+                if (typeof value === "boolean") return `    ${key} = $${value ? "true" : "false"}`;
+                return `    ${key} = ${quotePs(value)}`;
+            });
+            const runner = [
+                "$ErrorActionPreference = 'Continue'",
+                `$LogPath = ${quotePs(this.updateLogPath)}`,
+                "Start-Transcript -Path $LogPath -Append | Out-Null",
+                "try {",
+                `  $Installer = ${quotePs(this.updateInstallerPath)}`,
+                "  $InstallerParams = @{",
+                ...paramLines,
+                "  }",
+                "  & $Installer @InstallerParams",
+                "  exit $LASTEXITCODE",
+                "} finally {",
+                "  Stop-Transcript | Out-Null",
+                "}"
+            ].join("\r\n");
+
+            fs.writeFileSync(this.updateRunnerPath, runner, "utf8");
+
+            const quoteVbs = value => `"${String(value).replace(/"/g, "\"\"")}"`;
+            const quoteWin = value => `"${String(value).replace(/"/g, "\\\"")}"`;
+            const commandLine = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quoteWin(this.updateRunnerPath)}`;
+            const launcher = [
+                "Set shell = CreateObject(\"WScript.Shell\")",
+                `shell.Run ${quoteVbs(commandLine)}, 0, False`
+            ].join("\r\n");
+
+            fs.writeFileSync(this.updateLauncherPath, launcher, "utf8");
+            fs.appendFileSync(this.updateLogPath, `Hidden installer launcher written ${new Date().toISOString()}\n`);
+
+            const child = spawn("wscript.exe", [this.updateLauncherPath], {
                 detached: true,
                 windowsHide: true,
                 stdio: "ignore"
-            }).unref();
+            });
+
+            child.unref();
 
             BdApi.showToast("DiscordLyrics update started", { type: "info" });
         } catch (error) {
@@ -507,12 +548,25 @@ try {
         }
     }
 
-    showPendingUpdateNotice() {
+    showPendingUpdateNotice(attempt = 1) {
         try {
-            if (!fs.existsSync(this.pendingUpdatePath)) return;
-            const notice = JSON.parse(fs.readFileSync(this.pendingUpdatePath, "utf8"));
-            fs.rmSync(this.pendingUpdatePath, { force: true });
-            if (!notice?.version) return;
+            if (this.pendingUpdateNoticeOpen) return;
+            if (!fs.existsSync(this.pendingUpdatePath)) {
+                if (attempt < 6) setTimeout(() => this.showPendingUpdateNotice(attempt + 1), 5000);
+                return;
+            }
+            const notice = JSON.parse(fs.readFileSync(this.pendingUpdatePath, "utf8").replace(/^\uFEFF/, ""));
+            if (!notice?.version) {
+                if (attempt < 6) setTimeout(() => this.showPendingUpdateNotice(attempt + 1), 5000);
+                return;
+            }
+            const theme = this.getThemeStyles();
+
+            this.pendingUpdateNoticeOpen = true;
+            const clearNotice = () => {
+                this.pendingUpdateNoticeOpen = false;
+                fs.rmSync(this.pendingUpdatePath, { force: true });
+            };
 
             BdApi.UI.showConfirmationModal(
                 "DiscordLyrics updated",
@@ -521,16 +575,19 @@ try {
                         display: "grid",
                         gap: "10px",
                         maxHeight: "280px",
-                        overflow: "auto"
+                        overflow: "auto",
+                        color: theme.text
                     }
                 },
                     BdApi.React.createElement("div", null, `Version ${notice.version} is installed.`),
-                    BdApi.React.createElement("strong", null, "What's new"),
+                    BdApi.React.createElement("strong", { style: { color: theme.heading } }, "What's new"),
                     BdApi.React.createElement("div", { style: { display: "grid", gap: "8px" } }, this.renderReleaseNotes(notice.body || ""))
                 ),
                 {
                     confirmText: "Nice",
-                    cancelText: "Close"
+                    cancelText: "Close",
+                    onConfirm: clearNotice,
+                    onCancel: clearNotice
                 }
             );
         } catch (error) {
@@ -538,11 +595,37 @@ try {
         }
     }
 
+    getThemeValue(name, fallback) {
+        try {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
+    getThemeStyles() {
+        return {
+            surface: this.getThemeValue("--background-secondary", "#2b2d31"),
+            surfaceAlt: this.getThemeValue("--background-tertiary", "#1e1f22"),
+            border: this.getThemeValue("--background-modifier-accent", "rgba(255, 255, 255, 0.08)"),
+            text: this.getThemeValue("--text-normal", "#dbdee1"),
+            heading: this.getThemeValue("--header-primary", "#f2f3f5"),
+            muted: this.getThemeValue("--text-muted", "#949ba4"),
+            accent: this.getThemeValue("--brand-500", this.getThemeValue("--brand-experiment", "#5865f2")),
+            accentText: this.getThemeValue("--white-500", "#ffffff")
+        };
+    }
+
     getSettingsPanel() {
+        const theme = this.getThemeStyles();
         const panel = document.createElement("div");
         panel.style.display = "grid";
         panel.style.gap = "8px";
-        panel.style.padding = "10px";
+        panel.style.padding = "12px";
+        panel.style.background = theme.surface;
+        panel.style.border = `1px solid ${theme.border}`;
+        panel.style.borderRadius = "8px";
+        panel.style.color = theme.text;
 
         const button = document.createElement("button");
         button.textContent = "Check for updates";
@@ -551,13 +634,16 @@ try {
         button.style.borderRadius = "6px";
         button.style.border = "0";
         button.style.cursor = "pointer";
+        button.style.background = theme.accent;
+        button.style.color = theme.accentText;
+        button.style.fontWeight = "600";
 
         const current = document.createElement("div");
         const latest = document.createElement("div");
         const checked = document.createElement("div");
         [current, latest, checked].forEach(item => {
             item.style.fontSize = "12px";
-            item.style.opacity = "0.75";
+            item.style.color = theme.muted;
         });
 
         const render = () => {
@@ -731,7 +817,8 @@ try {
     }
 
     releaseBodyPreview(body) {
-        const text = String(body || "No release notes were provided.")
+        const value = typeof body === "object" && body && "value" in body ? body.value : body;
+        const text = String(value || "No release notes were provided.")
             .replace(/\r\n/g, "\n")
             .replace(/[ \t]+\n/g, "\n")
             .replace(/\n{3,}/g, "\n\n")
@@ -742,6 +829,7 @@ try {
     renderReleaseNotes(body) {
         const React = BdApi.React;
         const text = this.releaseBodyPreview(body);
+        const theme = this.getThemeStyles();
         const blocks = [];
         let listItems = [];
 
@@ -751,7 +839,7 @@ try {
             listItems = [];
             blocks.push(React.createElement("ul", {
                 key: `list-${blocks.length}`,
-                style: { margin: "0 0 0 18px", padding: 0 }
+                style: { margin: "0 0 0 18px", padding: 0, color: theme.text }
             }, items.map((item, index) => React.createElement("li", {
                 key: index,
                 style: { marginBottom: "4px" }
@@ -772,6 +860,7 @@ try {
                 blocks.push(React.createElement("div", {
                     key: `heading-${blocks.length}`,
                     style: {
+                        color: theme.heading,
                         fontWeight: 700,
                         fontSize: level <= 2 ? "16px" : "14px",
                         marginTop: blocks.length ? "6px" : 0
@@ -789,12 +878,12 @@ try {
             flushList();
             blocks.push(React.createElement("p", {
                 key: `paragraph-${blocks.length}`,
-                style: { margin: 0, lineHeight: 1.45 }
+                style: { margin: 0, color: theme.muted, lineHeight: 1.45 }
             }, line));
         }
 
         flushList();
-        return blocks.length ? blocks : React.createElement("p", { style: { margin: 0 } }, "No release notes were provided.");
+        return blocks.length ? blocks : React.createElement("p", { style: { margin: 0, color: theme.muted } }, "No release notes were provided.");
     }
 
     formatLastChecked(value) {
