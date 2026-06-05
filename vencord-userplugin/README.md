@@ -1,4 +1,4 @@
-# SpotifyLyricsStatus for Vencord
+# DiscordLyrics for Vencord
 
 This is the Vencord userplugin version of DiscordLyrics.
 
@@ -18,6 +18,6 @@ irm https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordL
 2. Copy `spotifyLyricsStatus` into `src/userplugins/spotifyLyricsStatus`.
 3. Run `pnpm build` from the client source folder.
 4. Reinstall or inject the client.
-5. Restart Discord and enable `SpotifyLyricsStatus`.
+5. Restart Discord and enable `DiscordLyrics`.
 
 Official custom plugin guide: <https://docs.vencord.dev/installing/custom-plugins/>

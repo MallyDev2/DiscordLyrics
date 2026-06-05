@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
     rpcShowAlbumArt: true
 } as const;
 
-const RELEASE_VERSION = "1.0.3";
+const RELEASE_VERSION = "1.0.4";
 const REPO = "MallyDev2/DiscordLyrics";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const LAST_UPDATE_CHECK_KEY = "DiscordLyrics.lastUpdateCheck";
@@ -70,24 +70,24 @@ const FONT_OPTIONS: Array<{ label: string; value: FontStyleId; }> = [
     { label: "UPPERCASE", value: "uppercase" },
     { label: "Lowercase", value: "lowercase" },
     { label: "W i d e  S p a c i n g", value: "wide" },
-    { label: "Ｆｕｌｌｗｉｄｔｈ", value: "fullwidth" },
-    { label: "𝙼𝚘𝚗𝚘𝚜𝚙𝚊𝚌𝚎", value: "mono" },
-    { label: "𝐁𝐨𝐥𝐝", value: "bold" },
-    { label: "𝐼𝑡𝑎𝑙𝑖𝑐", value: "italic" },
-    { label: "𝑩𝒐𝒍𝒅 𝑰𝒕𝒂𝒍𝒊𝒄", value: "boldItalic" },
-    { label: "𝖲𝖺𝗇𝗌", value: "sans" },
-    { label: "𝘚𝘢𝘯𝘴 𝘐𝘵𝘢𝘭𝘪𝘤", value: "sansItalic" },
-    { label: "𝗦𝗮𝗻𝘀 𝗕𝗼𝗹𝗱", value: "sansBold" },
-    { label: "𝙎𝙖𝙣𝙨 𝘽𝙤𝙡𝙙 𝙄𝙩𝙖𝙡𝙞𝙘", value: "sansBoldItalic" },
-    { label: "𝐒𝐞𝐫𝐢𝐟 𝐁𝐨𝐥𝐝", value: "serifBold" },
-    { label: "𝑆𝑒𝑟𝑖𝑓 𝐼𝑡𝑎𝑙𝑖𝑐", value: "serifItalic" },
-    { label: "𝑺𝒆𝒓𝒊𝒇 𝑩𝒐𝒍𝒅 𝑰𝒕𝒂𝒍𝒊𝒄", value: "serifBoldItalic" },
-    { label: "𝓒𝓾𝓻𝓼𝓲𝓿𝓮", value: "script" },
-    { label: "𝓒𝓾𝓻𝓼𝓲𝓿𝓮 𝓑𝓸𝓵𝓭", value: "scriptBold" },
-    { label: "𝔉𝔯𝔞𝔨𝔱𝔲𝔯", value: "fraktur" },
-    { label: "𝕱𝖗𝖆𝖐𝖙𝖚𝖗 𝕭𝖔𝖑𝖉", value: "frakturBold" },
-    { label: "𝔻𝕠𝕦𝕓𝕝𝕖-𝕊𝕥𝕣𝕦𝕔𝕜", value: "doubleStruck" },
-    { label: "ꜱᴍᴀʟʟ ᴄᴀᴘꜱ", value: "smallCaps" }
+    { label: "\u{ff26}\u{ff55}\u{ff4c}\u{ff4c}\u{ff57}\u{ff49}\u{ff44}\u{ff54}\u{ff48}", value: "fullwidth" },
+    { label: "\u{1d67c}\u{1d698}\u{1d697}\u{1d698}\u{1d69c}\u{1d699}\u{1d68a}\u{1d68c}\u{1d68e}", value: "mono" },
+    { label: "\u{1d401}\u{1d428}\u{1d425}\u{1d41d}", value: "bold" },
+    { label: "\u{1d43c}\u{1d461}\u{1d44e}\u{1d459}\u{1d456}\u{1d450}", value: "italic" },
+    { label: "\u{1d469}\u{1d490}\u{1d48d}\u{1d485} \u{1d470}\u{1d495}\u{1d482}\u{1d48d}\u{1d48a}\u{1d484}", value: "boldItalic" },
+    { label: "\u{1d5b2}\u{1d5ba}\u{1d5c7}\u{1d5cc}", value: "sans" },
+    { label: "\u{1d61a}\u{1d622}\u{1d62f}\u{1d634} \u{1d610}\u{1d635}\u{1d622}\u{1d62d}\u{1d62a}\u{1d624}", value: "sansItalic" },
+    { label: "\u{1d5e6}\u{1d5ee}\u{1d5fb}\u{1d600} \u{1d5d5}\u{1d5fc}\u{1d5f9}\u{1d5f1}", value: "sansBold" },
+    { label: "\u{1d64e}\u{1d656}\u{1d663}\u{1d668} \u{1d63d}\u{1d664}\u{1d661}\u{1d659} \u{1d644}\u{1d669}\u{1d656}\u{1d661}\u{1d65e}\u{1d658}", value: "sansBoldItalic" },
+    { label: "\u{1d412}\u{1d41e}\u{1d42b}\u{1d422}\u{1d41f} \u{1d401}\u{1d428}\u{1d425}\u{1d41d}", value: "serifBold" },
+    { label: "\u{1d446}\u{1d452}\u{1d45f}\u{1d456}\u{1d453} \u{1d43c}\u{1d461}\u{1d44e}\u{1d459}\u{1d456}\u{1d450}", value: "serifItalic" },
+    { label: "\u{1d47a}\u{1d486}\u{1d493}\u{1d48a}\u{1d487} \u{1d469}\u{1d490}\u{1d48d}\u{1d485} \u{1d470}\u{1d495}\u{1d482}\u{1d48d}\u{1d48a}\u{1d484}", value: "serifBoldItalic" },
+    { label: "\u{1d4d2}\u{1d4fe}\u{1d4fb}\u{1d4fc}\u{1d4f2}\u{1d4ff}\u{1d4ee}", value: "script" },
+    { label: "\u{1d4d2}\u{1d4fe}\u{1d4fb}\u{1d4fc}\u{1d4f2}\u{1d4ff}\u{1d4ee} \u{1d4d1}\u{1d4f8}\u{1d4f5}\u{1d4ed}", value: "scriptBold" },
+    { label: "\u{1d509}\u{1d52f}\u{1d51e}\u{1d528}\u{1d531}\u{1d532}\u{1d52f}", value: "fraktur" },
+    { label: "\u{1d575}\u{1d597}\u{1d586}\u{1d590}\u{1d599}\u{1d59a}\u{1d597} \u{1d56d}\u{1d594}\u{1d591}\u{1d589}", value: "frakturBold" },
+    { label: "\u{1d53b}\u{1d560}\u{1d566}\u{1d553}\u{1d55d}\u{1d556}-\u{1d54a}\u{1d565}\u{1d563}\u{1d566}\u{1d554}\u{1d55c}", value: "doubleStruck" },
+    { label: "\u{a731}\u{1d0d}\u{1d00}\u{029f}\u{029f} \u{1d04}\u{1d00}\u{1d18}\u{a731}", value: "smallCaps" }
 ];
 
 interface SpotifyArtist {
@@ -276,7 +276,7 @@ function resetPluginDefaults() {
 
     restartTimer();
     tick();
-    showToast("Spotify Lyrics Status settings reset", Toasts.Type.SUCCESS);
+    showToast("DiscordLyrics settings reset", Toasts.Type.SUCCESS);
 }
 
 interface GithubRelease {
@@ -355,7 +355,8 @@ async function checkForDiscordLyricsUpdateOnStartup() {
 }
 
 function releaseBodyPreview(body: string) {
-    const text = String(body || "No release notes were provided.")
+    const value = typeof body === "object" && body && "value" in body ? (body as any).value : body;
+    const text = String(value || "No release notes were provided.")
         .replace(/\r\n/g, "\n")
         .replace(/[ \t]+\n/g, "\n")
         .replace(/\n{3,}/g, "\n\n")
@@ -367,6 +368,8 @@ function renderReleaseNotes(body: string) {
     const text = releaseBodyPreview(body);
     const blocks: any[] = [];
     let listItems: string[] = [];
+    const mutedText = "var(--text-muted)";
+    const headingText = "var(--header-primary)";
 
     const flushList = () => {
         if (!listItems.length) return;
@@ -374,7 +377,7 @@ function renderReleaseNotes(body: string) {
         listItems = [];
         blocks.push(React.createElement("ul", {
             key: `list-${blocks.length}`,
-            style: { margin: "0 0 0 18px", padding: 0 }
+            style: { margin: "0 0 0 18px", padding: 0, color: "var(--text-normal)" }
         }, items.map((item, index) => React.createElement("li", {
             key: index,
             style: { marginBottom: "4px" }
@@ -395,6 +398,7 @@ function renderReleaseNotes(body: string) {
             blocks.push(React.createElement("div", {
                 key: `heading-${blocks.length}`,
                 style: {
+                    color: headingText,
                     fontWeight: 700,
                     fontSize: level <= 2 ? "16px" : "14px",
                     marginTop: blocks.length ? "6px" : 0
@@ -412,13 +416,26 @@ function renderReleaseNotes(body: string) {
         flushList();
         blocks.push(React.createElement("p", {
             key: `paragraph-${blocks.length}`,
-            style: { margin: 0, lineHeight: 1.45 }
+            style: { margin: 0, color: mutedText, lineHeight: 1.45 }
         }, line));
     }
 
     flushList();
-    return blocks.length ? blocks : React.createElement("p", { style: { margin: 0 } }, "No release notes were provided.");
+    return blocks.length ? blocks : React.createElement("p", { style: { margin: 0, color: mutedText } }, "No release notes were provided.");
 }
+
+const themedModalBodyStyle = {
+    display: "grid",
+    gap: "10px",
+    maxHeight: "280px",
+    overflow: "auto",
+    color: "var(--text-normal)"
+};
+
+const themedMutedMetaStyle = {
+    color: "var(--text-muted)",
+    fontSize: "12px"
+};
 
 function showUpdateFoundModal(version: string, release: GithubRelease) {
     openModal(props => React.createElement(ConfirmModal, {
@@ -427,6 +444,7 @@ function showUpdateFoundModal(version: string, release: GithubRelease) {
         subtitle: `DiscordLyrics ${version} is available. Install it and restart Discord?`,
         confirmText: "Install and restart",
         cancelText: "Later",
+        variant: "primary",
         onConfirm: () => {
             showToast("DiscordLyrics update started", Toasts.Type.MESSAGE);
             void Native.installUpdate(version, release.body || "").catch(error => {
@@ -437,41 +455,64 @@ function showUpdateFoundModal(version: string, release: GithubRelease) {
         onCancel: () => void 0
     }, React.createElement("div", {
         style: {
+            ...themedModalBodyStyle,
             display: "grid",
             gap: "10px",
             maxHeight: "260px",
             overflow: "auto"
         }
     },
-        React.createElement("strong", null, "What's new"),
+        React.createElement("strong", { style: { color: "var(--header-primary)" } }, "What's new"),
         React.createElement("div", { style: { display: "grid", gap: "8px" } }, renderReleaseNotes(release.body || "")),
-        React.createElement("div", { style: { opacity: 0.72, fontSize: "12px" } }, release.html_url || `https://github.com/${REPO}/releases/latest`)
+        React.createElement("div", { style: themedMutedMetaStyle }, release.html_url || `https://github.com/${REPO}/releases/latest`)
     )));
 }
 
-async function showPendingUpdateNotice() {
-    const notice = await Native.readPendingUpdateNotice?.() as { version?: string; body?: string; } | null;
-    if (!notice?.version) return;
+let pendingUpdateNoticeOpen = false;
 
-    openModal(props => React.createElement(ConfirmModal, {
-        ...props,
-        title: "DiscordLyrics updated",
-        subtitle: `Version ${notice.version} is installed.`,
-        confirmText: "Nice",
-        cancelText: "Close",
-        onConfirm: () => void 0,
-        onCancel: () => void 0
-    }, React.createElement("div", {
-        style: {
-            display: "grid",
-            gap: "10px",
-            maxHeight: "280px",
-            overflow: "auto"
-        }
-    },
-        React.createElement("strong", null, "What's new"),
-        React.createElement("div", { style: { display: "grid", gap: "8px" } }, renderReleaseNotes(notice.body || ""))
-    )));
+async function showPendingUpdateNotice(attempt = 1) {
+    if (pendingUpdateNoticeOpen) return;
+
+    const readPendingUpdateNotice = Native.readPendingUpdateNotice;
+    if (typeof readPendingUpdateNotice !== "function") {
+        debugLog(`pending update notice reader unavailable attempt=${attempt}`);
+        if (attempt < 6) window.setTimeout(() => void showPendingUpdateNotice(attempt + 1), 5000);
+        return;
+    }
+
+    const notice = await readPendingUpdateNotice() as { version?: string; body?: string; } | null;
+    if (!notice?.version) {
+        return;
+    }
+
+    pendingUpdateNoticeOpen = true;
+    const clearNotice = () => {
+        pendingUpdateNoticeOpen = false;
+        void Native.clearPendingUpdateNotice?.();
+    };
+
+    try {
+        openModal(props => React.createElement(ConfirmModal, {
+            ...props,
+            title: "DiscordLyrics updated",
+            subtitle: `Version ${notice.version} is installed.`,
+            confirmText: "Nice",
+            cancelText: "Close",
+            variant: "primary",
+            onConfirm: clearNotice,
+            onCancel: clearNotice
+        }, React.createElement("div", {
+            style: themedModalBodyStyle
+        },
+            React.createElement("strong", { style: { color: "var(--header-primary)" } }, "What's new"),
+            React.createElement("div", { style: { display: "grid", gap: "8px" } }, renderReleaseNotes(notice.body || ""))
+        )));
+        debugLog(`pending update notice opened version=${notice.version}`);
+    } catch (error) {
+        pendingUpdateNoticeOpen = false;
+        debugLog(`pending update notice failed attempt=${attempt} ${stringifyError(error)}`);
+        if (attempt < 6) window.setTimeout(() => void showPendingUpdateNotice(attempt + 1), 5000);
+    }
 }
 
 function UpdateSettingsControl() {
@@ -503,7 +544,8 @@ function UpdateSettingsControl() {
             padding: "12px",
             border: "1px solid var(--background-modifier-accent)",
             borderRadius: "8px",
-            background: "var(--background-secondary)"
+            background: "var(--background-secondary)",
+            color: "var(--text-normal)"
         }
     },
         React.createElement(Button, {
@@ -517,9 +559,9 @@ function UpdateSettingsControl() {
                 setChecking(false);
             }
         }, checking ? "Checking..." : "Check for updates"),
-        React.createElement("div", { style: { fontSize: "12px", opacity: 0.72 } }, `Current version: ${RELEASE_VERSION}`),
-        React.createElement("div", { style: { fontSize: "12px", opacity: 0.72 } }, `Latest on GitHub: ${latestVersion || "not checked"}`),
-        React.createElement("div", { style: { fontSize: "12px", opacity: 0.72 } }, formatLastChecked(lastChecked))
+        React.createElement("div", { style: themedMutedMetaStyle }, `Current version: ${RELEASE_VERSION}`),
+        React.createElement("div", { style: themedMutedMetaStyle }, `Latest on GitHub: ${latestVersion || "not checked"}`),
+        React.createElement("div", { style: themedMutedMetaStyle }, formatLastChecked(lastChecked))
     );
 }
 
@@ -582,7 +624,7 @@ const settings = definePluginSettings({
         component: () => React.createElement(Button, {
             color: Button.Colors.RED,
             onClick: resetPluginDefaults
-        }, "Reset Spotify Lyrics Status Defaults")
+        }, "Reset DiscordLyrics Defaults")
     }
 });
 
@@ -684,14 +726,14 @@ const FONT_RANGES = {
 
 const FONT_EXCEPTIONS: Partial<Record<keyof typeof FONT_RANGES, Record<string, string>>> = {
     script: {
-        B: "ℬ", E: "ℰ", F: "ℱ", H: "ℋ", I: "ℐ", L: "ℒ", M: "ℳ", R: "ℛ",
-        e: "ℯ", g: "ℊ", o: "ℴ"
+        B: "\u{212c}", E: "\u{2130}", F: "\u{2131}", H: "\u{210b}", I: "\u{2110}", L: "\u{2112}", M: "\u{2133}", R: "\u{211b}",
+        e: "\u{212f}", g: "\u{210a}", o: "\u{2134}"
     },
     fraktur: {
-        C: "ℭ", H: "ℌ", I: "ℑ", R: "ℜ", Z: "ℨ"
+        C: "\u{212d}", H: "\u{210c}", I: "\u{2111}", R: "\u{211c}", Z: "\u{2128}"
     },
     doubleStruck: {
-        C: "ℂ", H: "ℍ", N: "ℕ", P: "ℙ", Q: "ℚ", R: "ℝ", Z: "ℤ"
+        C: "\u{2102}", H: "\u{210d}", N: "\u{2115}", P: "\u{2119}", Q: "\u{211a}", R: "\u{211d}", Z: "\u{2124}"
     }
 };
 
@@ -713,9 +755,9 @@ function styleAlphabet(value: string, style: keyof typeof FONT_RANGES) {
 
 function styleSmallCaps(value: string) {
     const letters: Record<string, string> = {
-        a: "ᴀ", b: "ʙ", c: "ᴄ", d: "ᴅ", e: "ᴇ", f: "ꜰ", g: "ɢ", h: "ʜ", i: "ɪ", j: "ᴊ",
-        k: "ᴋ", l: "ʟ", m: "ᴍ", n: "ɴ", o: "ᴏ", p: "ᴘ", q: "ǫ", r: "ʀ", s: "ꜱ", t: "ᴛ",
-        u: "ᴜ", v: "ᴠ", w: "ᴡ", x: "x", y: "ʏ", z: "ᴢ"
+        a: "\u{1d00}", b: "\u{0299}", c: "\u{1d04}", d: "\u{1d05}", e: "\u{1d07}", f: "\u{a730}", g: "\u{0262}", h: "\u{029c}", i: "\u{026a}", j: "\u{1d0a}",
+        k: "\u{1d0b}", l: "\u{029f}", m: "\u{1d0d}", n: "\u{0274}", o: "\u{1d0f}", p: "\u{1d18}", q: "\u{01eb}", r: "\u{0280}", s: "\u{a731}", t: "\u{1d1b}",
+        u: "\u{1d1c}", v: "\u{1d20}", w: "\u{1d21}", x: "x", y: "\u{028f}", z: "\u{1d22}"
     };
 
     return [...value.toLowerCase()].map(char => letters[char] ?? char).join("");
@@ -1805,7 +1847,7 @@ function clearStatusForShutdown() {
 updatePluginAuthor();
 
 export default definePlugin({
-    name: "SpotifyLyricsStatus",
+    name: "DiscordLyrics",
     description: "Sets your profile status to synced Spotify lyrics and shows a Spotify song RPC.",
     authors: [pluginAuthor],
     tags: ["Spotify", "Media"],
@@ -1823,10 +1865,10 @@ export default definePlugin({
         void pollWindowsSpotifyState(true);
         window.setTimeout(() => void pollWindowsSpotifyState(true), 2000);
         window.setTimeout(() => void pollWindowsSpotifyState(true), 5000);
-        void showPendingUpdateNotice();
+        window.setTimeout(() => void showPendingUpdateNotice(), 2500);
         window.setTimeout(() => void checkForDiscordLyricsUpdateOnStartup(), 7000);
         tick();
-        showToast("SpotifyLyricsStatus started", Toasts.Type.SUCCESS);
+        showToast("DiscordLyrics started", Toasts.Type.SUCCESS);
     },
 
     stop() {

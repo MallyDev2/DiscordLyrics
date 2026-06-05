@@ -21,6 +21,12 @@ $StateDir = Join-Path $env:APPDATA "DiscordLyrics"
 $InstallProfilePath = Join-Path $StateDir "install-profile.json"
 $PendingUpdatePath = Join-Path $StateDir "pending-update.json"
 
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+} catch {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+}
+
 function Write-Step($Text) {
     Write-Host ""
     Write-Host "== $Text" -ForegroundColor Cyan
@@ -60,15 +66,16 @@ function Save-PendingUpdateNotice {
 
     $Body = ""
     if ($NotesPath -and (Test-Path -LiteralPath $NotesPath)) {
-        $Body = Get-Content -LiteralPath $NotesPath -Raw
+        $Body = [string](Get-Content -LiteralPath $NotesPath -Raw)
     }
 
     New-Item -ItemType Directory -Force $StateDir | Out-Null
-    [pscustomobject]@{
+    $NoticeJson = [pscustomobject]@{
         version = $Version
         body = $Body
         installedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $PendingUpdatePath -Encoding UTF8
+    } | ConvertTo-Json -Compress
+    [System.IO.File]::WriteAllText($PendingUpdatePath, $NoticeJson, [System.Text.UTF8Encoding]::new($false))
 }
 
 function Invoke-CheckedCommand {
@@ -100,6 +107,35 @@ function Invoke-CheckedCommand {
     if ($Text -match "(?m)(ERROR|Failed!|Something went wrong)") {
         throw "$Command $($Arguments -join ' ') reported a failed operation."
     }
+}
+
+function Download-File {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [Parameter(Mandatory = $true)]
+        [string]$OutFile
+    )
+
+    $LastError = $null
+    for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
+        $Client = $null
+        try {
+            $Client = [System.Net.WebClient]::new()
+            $Client.Headers.Set("User-Agent", "DiscordLyrics-Installer")
+            $Client.DownloadFile($Url, $OutFile)
+            return
+        } catch {
+            $LastError = $_
+            Start-Sleep -Seconds $Attempt
+        } finally {
+            if ($Client) {
+                $Client.Dispose()
+            }
+        }
+    }
+
+    throw "Could not download $Url. $($LastError.Exception.Message)"
 }
 
 function Reset-WorkDir {
@@ -142,7 +178,7 @@ function Ensure-Pnpm {
 function Download-Release {
     Write-Step "Downloading DiscordLyrics"
     $Url = "https://github.com/$Repo/releases/latest/download/DiscordLyrics-release.zip"
-    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $ReleaseZip
+    Download-File -Url $Url -OutFile $ReleaseZip
     Expand-Archive -Path $ReleaseZip -DestinationPath $WorkDir -Force
     if (!(Test-Path $PackageDir) -and (Test-Path (Join-Path $WorkDir "BetterDiscord"))) {
         $script:PackageDir = $WorkDir
@@ -669,4 +705,4 @@ Save-PendingUpdateNotice -Version $UpdateVersion -NotesPath $UpdateNotesPath
 Start-Discord
 
 Write-Host ""
-Write-Host "DiscordLyrics install complete. Enable SpotifyLyricsStatus if it is not already enabled." -ForegroundColor Green
+Write-Host "DiscordLyrics install complete. Enable DiscordLyrics if it is not already enabled." -ForegroundColor Green
