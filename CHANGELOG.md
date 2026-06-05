@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5
+
+- Fixed the Windows installer so pnpm warnings no longer get treated as a failed build.
+- Updated command handling to prefer native `.cmd` shims instead of PowerShell package-manager shims.
+
 ## 1.0.4
 
 - Added a Discord-styled progress window for update installs.

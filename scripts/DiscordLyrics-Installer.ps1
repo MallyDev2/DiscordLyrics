@@ -111,13 +111,31 @@ function Resolve-NativeCommand {
         [string]$Command
     )
 
-    $LookupNames = @($Command)
-    if ([System.IO.Path]::GetExtension($Command) -eq "") {
-        $LookupNames = @("$Command.cmd", "$Command.exe", "$Command.bat", $Command)
+    if ([System.IO.Path]::GetExtension($Command) -ne "") {
+        $FoundExact = Get-Command $Command -ErrorAction SilentlyContinue | Where-Object { $_.Source -and $_.Source -notmatch '\.ps1$' } | Select-Object -First 1
+        if ($FoundExact) {
+            return $FoundExact.Source
+        }
+
+        return $Command
     }
 
-    foreach ($Name in $LookupNames) {
-        $Found = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $Extensions = @(".cmd", ".exe", ".bat", "")
+    foreach ($Directory in ($env:PATH -split [System.IO.Path]::PathSeparator)) {
+        if ([string]::IsNullOrWhiteSpace($Directory)) {
+            continue
+        }
+
+        foreach ($Extension in $Extensions) {
+            $Candidate = Join-Path $Directory "$Command$Extension"
+            if (Test-Path -LiteralPath $Candidate -PathType Leaf) {
+                return $Candidate
+            }
+        }
+    }
+
+    foreach ($Name in @("$Command.cmd", "$Command.exe", "$Command.bat", $Command)) {
+        $Found = Get-Command $Name -ErrorAction SilentlyContinue | Where-Object { $_.Source -and $_.Source -notmatch '\.ps1$' } | Select-Object -First 1
         if ($Found) {
             return $Found.Source
         }
