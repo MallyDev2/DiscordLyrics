@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4
+
+- Added a Discord-styled progress window for update installs.
+- Show installer output inside the update window while Discord closes, updates, and reopens.
+- Updated the automatic updater to launch the UI installer directly from the GitHub release.
+- Kept the command-line installer path available for manual installs.
+
 ## 1.0.3
 
 - Added a Windows UI installer while keeping the command-line installer path available.

@@ -1,6 +1,6 @@
 {
   "name": "@mallydev2/discordlyrics",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A polished Spotify lyrics status plugin for BetterDiscord and Vencord.",
   "private": false,
   "author": "MallyDev2",
