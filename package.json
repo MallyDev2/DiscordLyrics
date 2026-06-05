@@ -27,20 +27,5 @@
     "build": "node scripts/build-release.js",
     "release:pack": "npm run check && npm run build"
   },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "public"
-  },
-  "files": [
-    "SpotifyLyricsStatus.plugin.js",
-    "vencord-userplugin/",
-    "dist/SpotifyLyricsStatus.plugin.js",
-    "dist/vencord-spotifyLyricsStatus.zip",
-    "dist/DiscordLyrics-release.zip",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "SECURITY.md"
-  ],
   "devDependencies": {}
 }

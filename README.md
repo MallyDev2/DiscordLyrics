@@ -1,81 +1,99 @@
 <p align="center">
-  <img src="assets/discordlyrics-bg.png" alt="DiscordLyrics by MallyDev2" width="100%">
+  <img src="IMG_9011.jpeg" alt="DiscordLyrics by MallyDev2" width="100%">
 </p>
 
 <h1 align="center">DiscordLyrics</h1>
 
 <p align="center">
-  <strong>Spotify lyrics in your Discord status.</strong>
+  <strong>Just another Spotify lyric status changer</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MallyDev2/DiscordLyrics?style=for-the-badge&label=release&labelColor=101014&color=d7b982"></a>
-  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.exe"><img alt="Windows installer" src="https://img.shields.io/badge/Auto_Install-Windows-ffffff?style=for-the-badge&labelColor=101014&color=5865f2"></a>
-  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip"><img alt="Full package" src="https://img.shields.io/badge/Download-Full_Package-101014?style=for-the-badge&labelColor=f4ead8&color=d7b982"></a>
+  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MallyDev2/DiscordLyrics?style=for-the-badge&labelColor=101014&color=d7b981"></a>
+  <a href="https://github.com/MallyDev2/DiscordLyrics/actions"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/MallyDev2/DiscordLyrics/ci.yml?style=for-the-badge&label=build&labelColor=101014&color=9ec7ff"></a>
+  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.cmd"><img alt="Windows installer" src="https://img.shields.io/badge/Auto_Install-Windows-ffffff?style=for-the-badge&labelColor=101014&color=d7b981"></a>
+  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip"><img alt="Download full package" src="https://img.shields.io/badge/Download-Full_Package-101014?style=for-the-badge&labelColor=f4ead8&color=d7b981"></a>
 </p>
 
-DiscordLyrics syncs your current Spotify track to Discord. If synced lyrics are found, your custom status follows the lyric line. If not, it falls back to the song and artist.
+DiscordLyrics syncs Spotify lyrics from currently playing song to your custom status. By doing this it is a breach of discord tos for self botting so please use responsibly.
 
-This changes your Discord status automatically, so use it responsibly.
+## Highlights
 
-## Features
+- Live lyric status from Spotify playback.
+- LRCLIB synced lyric lookup.
+- Pause fallback using the last detected track.
+- Rate-conscious status updates.
 
-- Synced lyrics from LRCLIB.
-- Spotify pause and song-change handling.
-- BetterDiscord plugin support.
-- Vencord, Equicord, and Dorian source-client support.
-- Update checks with install and restart prompts.
-- Windows installer with the command installer still available.
+## Client Support
+
+| Client | Status | Notes |
+| --- | --- | --- |
+| BetterDiscord | Supported | Uses the packaged `.plugin.js` release file. |
+| Vencord | Supported | Installs as a source userplugin and rebuilds the client. |
+| Equicord | Supported | Uses the same source userplugin layout as Vencord-style clients. |
+| Dorian | Supported | Works when the local source tree follows the Vencord plugin structure. |
 
 ## Download
 
-| Client | File |
-| --- | --- |
-| Auto installer | [DiscordLyrics-Installer.exe](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.exe) |
-| Command installer | [DiscordLyrics-Installer.cmd](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.cmd) |
-| BetterDiscord | [SpotifyLyricsStatus.plugin.js](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/SpotifyLyricsStatus.plugin.js) |
-| Vencord package | [vencord-spotifyLyricsStatus.zip](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/vencord-spotifyLyricsStatus.zip) |
-| Full package | [DiscordLyrics-release.zip](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip) |
+| Client | Release file | Setup |
+| --- | --- | --- |
+| Auto installer | [DiscordLyrics-Installer.cmd](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.cmd) | Runs the Windows installer for BetterDiscord, Vencord, Equicord, or Dorian-style source clients. |
+| Complete package | [DiscordLyrics-release.zip](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip) | Includes both client builds, README, license, and changelog. |
 
-## Install
+## One-Click Windows Setup
 
-Download `DiscordLyrics-Installer.exe`, run it, and choose your Discord client.
+Download `DiscordLyrics-Installer.cmd`, run it, and let it install the correct build.
 
-For a direct PowerShell install:
+The installer:
 
-```powershell
-irm https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.ps1 -OutFile "$env:TEMP\DiscordLyrics-Installer.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\DiscordLyrics-Installer.ps1"
-```
+- Installs the BetterDiscord plugin when BetterDiscord is detected.
+- Installs the source userplugin for Vencord, Equicord, and Dorian-style clients.
+- Builds the source client with `pnpm build`.
+- Runs `pnpm inject` when that client exposes an inject script.
 
-## BetterDiscord
+## How It Works
 
-1. Download `SpotifyLyricsStatus.plugin.js`.
-2. Move it to `%AppData%\BetterDiscord\plugins`.
-3. Reload Discord.
-4. Enable `DiscordLyrics`.
+DiscordLyrics reads your Spotify activity from Discord, matches the current track through LRCLIB, and updates your custom status when the active lyric line changes.
 
-## Vencord
+Fallback format:
 
-1. Download `vencord-spotifyLyricsStatus.zip`.
-2. Extract `spotifyLyricsStatus`.
-3. Copy it to `Vencord/src/userplugins/spotifyLyricsStatus`.
-4. Run `pnpm build`, then inject or reinstall your client.
-5. Restart Discord and enable `DiscordLyrics`.
-
-## Build
-
-```bash
-npm install
-npm run check
-npm run build
+```text
+Song - Artist
 ```
 
 ## Troubleshooting
 
-- Spotify must be connected to Discord and visible as activity.
+If lyrics do not appear right away, check these first:
+
+- Spotify must be connected to Discord and visible as your activity.
+- The track title and artist should match the public LRCLIB listing.
 - Reload Discord after enabling or updating the plugin.
-- If a song has no synced lyrics in LRCLIB, DiscordLyrics falls back to the song name.
-- Source clients need to be rebuilt after plugin updates.
+- Wait a few seconds after changing songs so the lyric lookup can refresh.
+- For source clients, rebuild and inject after every plugin update.
+
+## Repository Layout
+
+```text
+DiscordLyrics/
+  SpotifyLyricsStatus.plugin.js
+  vencord-userplugin/spotifyLyricsStatus/
+  scripts/build-release.js
+  dist/
+  assets/
+```
+
+## Compatibility
+
+| Platform | Status |
+| --- | --- |
+| BetterDiscord | Supported |
+| Vencord userplugin | Supported |
+
+## Support
+
+If you enjoy discordlyrics, you can support me through GitHub Sponsors:
+
+https://github.com/sponsors/MallyDev2
 
 ## License
 
