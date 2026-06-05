@@ -714,6 +714,9 @@ function Install-SourceClient {
         return
     }
 
+    $PreviousAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
+    $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = "true"
+
     Push-Location $ClientRoot
     try {
         Write-Step "Building client"
@@ -754,6 +757,11 @@ function Install-SourceClient {
         }
     } finally {
         Pop-Location
+        if ($null -eq $PreviousAllowAllBuilds) {
+            Remove-Item Env:\PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS -ErrorAction SilentlyContinue
+        } else {
+            $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $PreviousAllowAllBuilds
+        }
     }
 
     return $ClientRoot
