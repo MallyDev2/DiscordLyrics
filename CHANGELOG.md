@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6
+
+- Forced source-client installs to use the native pnpm command path during install, build, and inject.
+- Cleared the temporary installer download folder before fetching a fresh installer.
+
 ## 1.0.5
 
 - Fixed the Windows installer so pnpm warnings no longer get treated as a failed build.

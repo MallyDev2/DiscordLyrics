@@ -13,7 +13,8 @@ if exist "%LOCAL_APP%" (
     exit /b 0
 )
 
-if not exist "%TEMP_DIR%" mkdir "%TEMP_DIR%" >nul 2>nul
+if exist "%TEMP_DIR%" rmdir /s /q "%TEMP_DIR%" >nul 2>nul
+mkdir "%TEMP_DIR%" >nul 2>nul
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { Invoke-WebRequest -UseBasicParsing -Uri '%BASE_URL%/DiscordLyrics-Installer.exe' -OutFile '%TEMP_APP%'; Invoke-WebRequest -UseBasicParsing -Uri '%BASE_URL%/DiscordLyrics-Installer.ps1' -OutFile '%TEMP_ENGINE%' } catch { exit 1 }"
 if errorlevel 1 exit /b 1
