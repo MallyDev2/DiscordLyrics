@@ -87,13 +87,26 @@ function Invoke-CheckedCommand {
     )
 
     $ResolvedCommand = Resolve-NativeCommand -Command $Command
-    $CommandLine = Join-CommandLine -Command $ResolvedCommand -Arguments $Arguments
-    $Output = & cmd.exe /d /s /c $CommandLine 2>&1
-    $ExitCode = $LASTEXITCODE
+    $StartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $StartInfo.FileName = $ResolvedCommand
+    $StartInfo.Arguments = ($Arguments | ForEach-Object { ConvertTo-CommandArgument $_ }) -join " "
+    $StartInfo.UseShellExecute = $false
+    $StartInfo.RedirectStandardOutput = $true
+    $StartInfo.RedirectStandardError = $true
+    $StartInfo.CreateNoWindow = $true
 
-    $Text = ($Output | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    $Process = [System.Diagnostics.Process]::new()
+    $Process.StartInfo = $StartInfo
+    [void]$Process.Start()
+    $StdOut = $Process.StandardOutput.ReadToEnd()
+    $StdErr = $Process.StandardError.ReadToEnd()
+    $Process.WaitForExit()
+    $ExitCode = $Process.ExitCode
+    $Process.Dispose()
+
+    $Text = (@($StdOut, $StdErr) | Where-Object { $_ }) -join [Environment]::NewLine
     if ($Text) {
-        Write-Host $Text
+        Write-Host ($Text.TrimEnd())
     }
 
     if ($ExitCode -ne 0) {

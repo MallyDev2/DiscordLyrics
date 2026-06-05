@@ -4,6 +4,8 @@
 
 - Forced source-client installs to use the native pnpm command path during install, build, and inject.
 - Cleared the temporary installer download folder before fetching a fresh installer.
+- Fixed pnpm warnings being treated as installer failures on Windows PowerShell.
+- Fixed the installer UI download path so it avoids stale loose temp scripts.
 
 ## 1.0.5
 

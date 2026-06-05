@@ -13,6 +13,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new InstallerForm(args));
@@ -431,7 +432,12 @@ internal sealed class InstallerForm : Form
         if (File.Exists(local))
             return local;
 
-        var temp = Path.Combine(Path.GetTempPath(), "DiscordLyrics-Installer.ps1");
+        var cacheDir = Path.Combine(Path.GetTempPath(), "DiscordLyricsInstaller");
+        Directory.CreateDirectory(cacheDir);
+        var temp = Path.Combine(cacheDir, "DiscordLyrics-Installer.ps1");
+        if (File.Exists(temp))
+            File.Delete(temp);
+
         using (var client = new WebClient())
             client.DownloadFile("https://github.com/" + Repo + "/releases/latest/download/DiscordLyrics-Installer.ps1", temp);
 
