@@ -210,9 +210,10 @@ function Reset-WorkDir {
 }
 
 function Ensure-Pnpm {
-    if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+    $PnpmCommand = Resolve-NativeCommand -Command "pnpm"
+    if ($PnpmCommand -and $PnpmCommand -notmatch '\.ps1$' -and (Test-Path -LiteralPath $PnpmCommand -PathType Leaf)) {
         Write-Ok "pnpm is ready"
-        return
+        return $PnpmCommand
     }
 
     Write-Warn "pnpm was not found"
@@ -221,18 +222,20 @@ function Ensure-Pnpm {
         Write-Step "Installing pnpm with Corepack"
         Invoke-CheckedCommand corepack enable
         Invoke-CheckedCommand corepack prepare pnpm@latest --activate
-        if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+        $PnpmCommand = Resolve-NativeCommand -Command "pnpm"
+        if ($PnpmCommand -and $PnpmCommand -notmatch '\.ps1$' -and (Test-Path -LiteralPath $PnpmCommand -PathType Leaf)) {
             Write-Ok "pnpm installed"
-            return
+            return $PnpmCommand
         }
     }
 
     if (Get-Command npm -ErrorAction SilentlyContinue) {
         Write-Step "Installing pnpm with npm"
         Invoke-CheckedCommand npm install -g pnpm
-        if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+        $PnpmCommand = Resolve-NativeCommand -Command "pnpm"
+        if ($PnpmCommand -and $PnpmCommand -notmatch '\.ps1$' -and (Test-Path -LiteralPath $PnpmCommand -PathType Leaf)) {
             Write-Ok "pnpm installed"
-            return
+            return $PnpmCommand
         }
     }
 
@@ -658,7 +661,7 @@ function Select-SourcePath {
 function Install-SourceClient {
     param([string]$ClientName)
 
-    Ensure-Pnpm
+    $PnpmCommand = Ensure-Pnpm
 
     $ClientRoot = Select-SourcePath -ClientName $ClientName
     $PluginZip = Join-Path $PackageDir "Vencord\vencord-spotifyLyricsStatus.zip"
@@ -703,12 +706,12 @@ function Install-SourceClient {
         Write-Step "Building client"
         if (!(Test-Path (Join-Path $ClientRoot "node_modules"))) {
             Write-Step "Installing client dependencies"
-            Invoke-CheckedCommand pnpm install --frozen-lockfile
+            Invoke-CheckedCommand $PnpmCommand install --frozen-lockfile
         } else {
             Write-Ok "Client dependencies already installed"
         }
 
-        Invoke-CheckedCommand pnpm build
+        Invoke-CheckedCommand $PnpmCommand build
 
         if (Test-Path (Join-Path $ClientRoot "dist")) {
             $ActiveDist = Join-Path $ClientDataDir "dist"
@@ -726,9 +729,9 @@ function Install-SourceClient {
             Repair-DiscordAsar
             Write-Step "Reinstalling client into Discord"
             if ($ClientName -eq "Vencord") {
-                Invoke-CheckedCommand pnpm inject -- -branch stable
+                Invoke-CheckedCommand $PnpmCommand inject -- -branch stable
             } else {
-                Invoke-CheckedCommand pnpm inject
+                Invoke-CheckedCommand $PnpmCommand inject
             }
             Write-Ok "Client was rebuilt and injected"
         } elseif ($NoInject -and $CanInject) {
