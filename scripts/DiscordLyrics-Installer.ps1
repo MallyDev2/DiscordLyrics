@@ -86,14 +86,10 @@ function Invoke-CheckedCommand {
         [string[]]$Arguments
     )
 
-    $PreviousErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $Output = & $Command @Arguments 2>&1
-        $ExitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $PreviousErrorActionPreference
-    }
+    $ResolvedCommand = Resolve-NativeCommand -Command $Command
+    $CommandLine = Join-CommandLine -Command $ResolvedCommand -Arguments $Arguments
+    $Output = & cmd.exe /d /s /c $CommandLine 2>&1
+    $ExitCode = $LASTEXITCODE
 
     $Text = ($Output | ForEach-Object { "$_" }) -join [Environment]::NewLine
     if ($Text) {
@@ -107,6 +103,56 @@ function Invoke-CheckedCommand {
     if ($Text -match "(?m)(ERROR|Failed!|Something went wrong)") {
         throw "$Command $($Arguments -join ' ') reported a failed operation."
     }
+}
+
+function Resolve-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command
+    )
+
+    $LookupNames = @($Command)
+    if ([System.IO.Path]::GetExtension($Command) -eq "") {
+        $LookupNames = @("$Command.cmd", "$Command.exe", "$Command.bat", $Command)
+    }
+
+    foreach ($Name in $LookupNames) {
+        $Found = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($Found) {
+            return $Found.Source
+        }
+    }
+
+    return $Command
+}
+
+function Join-CommandLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command,
+        [string[]]$Arguments = @()
+    )
+
+    $Parts = @($Command) + $Arguments
+    return ($Parts | ForEach-Object { ConvertTo-CommandArgument $_ }) -join " "
+}
+
+function ConvertTo-CommandArgument {
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) {
+        return '""'
+    }
+
+    $Text = [string]$Value
+    if ($Text -notmatch '[\s"]') {
+        return $Text
+    }
+
+    return '"' + ($Text -replace '"', '\"') + '"'
 }
 
 function Download-File {
