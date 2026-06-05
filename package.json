@@ -4,7 +4,7 @@
   "description": "Spotify lyrics status for BetterDiscord and Vencord.",
   "private": false,
   "author": "MallyDev2",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/MallyDev2/DiscordLyrics#readme",
   "repository": {
     "type": "git",
