@@ -6,6 +6,7 @@
 - Cleared the temporary installer download folder before fetching a fresh installer.
 - Fixed pnpm warnings being treated as installer failures on Windows PowerShell.
 - Fixed the installer UI download path so it avoids stale loose temp scripts.
+- Fixed pnpm build-approval failures during source-client installs.
 
 ## 1.0.5
 
