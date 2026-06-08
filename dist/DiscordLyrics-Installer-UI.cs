@@ -387,6 +387,8 @@ internal sealed class InstallerForm : Form
 
             var updateSource = sourcePathArg;
             if (!LooksLikeSource(updateSource))
+                updateSource = GetSavedSourcePath(targetArg);
+            if (!LooksLikeSource(updateSource))
                 updateSource = sourceBox.Text.Trim();
             if (!LooksLikeSource(updateSource))
                 updateSource = GetSourceCandidates(targetArg).FirstOrDefault();
@@ -512,6 +514,74 @@ internal sealed class InstallerForm : Form
             .Select(root => Path.Combine(root, clientName))
             .Where(LooksLikeSource)
             .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string GetSavedSourcePath(string clientName)
+    {
+        var profilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "DiscordLyrics",
+            "install-profile.json"
+        );
+
+        if (!File.Exists(profilePath))
+            return "";
+
+        try
+        {
+            var json = File.ReadAllText(profilePath);
+            var target = ReadJsonString(json, "target");
+            var sourcePath = ReadJsonString(json, "sourcePath");
+            return string.Equals(target, clientName, StringComparison.OrdinalIgnoreCase) && LooksLikeSource(sourcePath)
+                ? sourcePath
+                : "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string ReadJsonString(string json, string name)
+    {
+        var marker = "\"" + name + "\"";
+        var markerIndex = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+            return "";
+
+        var colonIndex = json.IndexOf(':', markerIndex + marker.Length);
+        if (colonIndex < 0)
+            return "";
+
+        var start = json.IndexOf('"', colonIndex + 1);
+        if (start < 0)
+            return "";
+
+        var result = "";
+        var escaping = false;
+        for (var index = start + 1; index < json.Length; index++)
+        {
+            var ch = json[index];
+            if (escaping)
+            {
+                result += ch == '\\' || ch == '"' || ch == '/' ? ch.ToString() : "\\" + ch;
+                escaping = false;
+                continue;
+            }
+
+            if (ch == '\\')
+            {
+                escaping = true;
+                continue;
+            }
+
+            if (ch == '"')
+                return result;
+
+            result += ch;
+        }
+
+        return "";
     }
 
     private static bool LooksLikeSource(string path)

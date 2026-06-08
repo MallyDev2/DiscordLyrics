@@ -6,6 +6,7 @@
 - Clear DiscordLyrics status earlier when Discord is closing or unloading.
 - Avoid update installer file locks by launching each update from a fresh installer exe path.
 - Let update installs auto-detect the saved source client path when the updater is launched without a source argument.
+- Read the saved install profile directly from the update installer so source-client updates do not ask users for folders.
 
 ## 1.0.4
 
