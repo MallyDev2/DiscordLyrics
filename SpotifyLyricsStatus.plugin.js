@@ -2,7 +2,7 @@
  * @name DiscordLyrics
  * @author mally
  * @description Sets your Discord custom status to the current synced lyric from Spotify, or a pause status when playback stops.
- * @version 1.0.4
+ * @version 1.0.5
  * @source https://lrclib.net
  */
 
@@ -14,7 +14,7 @@ const { execFile, spawn } = require("child_process");
 module.exports = class DiscordLyrics {
     constructor() {
         this.name = "DiscordLyrics";
-        this.version = "1.0.4";
+        this.version = "1.0.5";
         this.repo = "MallyDev2/DiscordLyrics";
         this.latestReleaseApi = `https://api.github.com/repos/${this.repo}/releases/latest`;
         this.interval = null;
@@ -50,6 +50,7 @@ module.exports = class DiscordLyrics {
         this.updateUiPath = path.join(this.stateDir, "DiscordLyrics-Installer.exe");
         this.updateLogPath = path.join(this.stateDir, "update-install.log");
         this.pendingUpdateNoticeOpen = false;
+        this.shutdownHandler = () => this.clearStatusForShutdown();
 
         this.config = {
             tickMs: 1000,
@@ -59,8 +60,6 @@ module.exports = class DiscordLyrics {
             pausedPrefix: "\u23f8 Pause - ",
             noLyricsPrefix: "\u266b ",
             clearWhenNoSong: true,
-            statusExpirationMs: 120000,
-            statusExpirationRefreshMs: 45000,
             windowsSpotifyPollMs: 2000,
             windowsSpotifyFreshMs: 10000,
             windowsSpotifyProcessGraceMs: 15000,
@@ -71,6 +70,8 @@ module.exports = class DiscordLyrics {
     start() {
         this.findModules();
         this.subscribeSpotifyState();
+        window.addEventListener("beforeunload", this.shutdownHandler);
+        window.addEventListener("pagehide", this.shutdownHandler);
         this.interval = setInterval(() => this.tick(), this.config.tickMs);
         setTimeout(() => this.showPendingUpdateNotice(), 2500);
         this.tick();
@@ -87,6 +88,8 @@ module.exports = class DiscordLyrics {
         if (this.fetchController) this.fetchController.abort();
         this.fetchController = null;
         this.unsubscribeSpotifyState();
+        window.removeEventListener("beforeunload", this.shutdownHandler);
+        window.removeEventListener("pagehide", this.shutdownHandler);
 
         this.lyrics = [];
         this.lastTrackKey = null;
@@ -107,7 +110,7 @@ module.exports = class DiscordLyrics {
     clearStatusForShutdown = () => {
         this.lastStatus = null;
         this.pauseTrack = null;
-        this.setCustomStatus("");
+        void this.setCustomStatus("", true).catch(() => void 0);
     };
 
     findModules() {
@@ -725,12 +728,9 @@ try {
         const now = Date.now();
         const actualStatus = this.getCurrentCustomStatusText();
         const cacheMismatch = status && status === this.lastStatus && actualStatus !== status;
-        const shouldRefreshExpiration = status
-            && status === this.lastStatus
-            && now + this.config.statusExpirationRefreshMs >= this.lastStatusExpiresAt;
-        const canForce = force && status && now - this.lastForcedStatusAt >= this.config.statusMinMs;
+        const canForce = force;
 
-        if (!cacheMismatch && !canForce && ((status === this.lastStatus && !shouldRefreshExpiration) || now < this.statusCooldownUntil)) return;
+        if (!cacheMismatch && !canForce && (status === this.lastStatus || now < this.statusCooldownUntil)) return;
 
         this.statusCooldownUntil = now + this.config.statusMinMs;
         this.lastStatus = status;
@@ -738,9 +738,9 @@ try {
 
         const customStatus = status ? {
             text: status,
-            expires_at: new Date(now + this.config.statusExpirationMs).toISOString()
+            expires_at: null
         } : null;
-        this.lastStatusExpiresAt = status ? now + this.config.statusExpirationMs : 0;
+        this.lastStatusExpiresAt = 0;
         this.lastRemoteStatus = status;
 
         const body = { custom_status: customStatus };

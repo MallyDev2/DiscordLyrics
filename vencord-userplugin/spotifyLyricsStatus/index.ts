@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
     rpcShowAlbumArt: true
 } as const;
 
-const RELEASE_VERSION = "1.0.4";
+const RELEASE_VERSION = "1.0.5";
 const REPO = "MallyDev2/DiscordLyrics";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const LAST_UPDATE_CHECK_KEY = "DiscordLyrics.lastUpdateCheck";
@@ -209,7 +209,6 @@ let spotifyPollInFlight = false;
 let lastPlaybackPlaying: boolean | undefined;
 let spotifyUnavailableAt = 0;
 let spotifyPollMutedUntil = 0;
-let lastRemoteStatusExpiresAt = 0;
 
 const STATUS_SOCKET_ID = "SpotifyLyricsStatus";
 const RPC_SOCKET_ID = "SpotifyLyricsStatusRpc";
@@ -221,8 +220,6 @@ const WINDOWS_SPOTIFY_STATE_FRESH_MS = 10000;
 const WINDOWS_SPOTIFY_PROCESS_GRACE_MS = 15000;
 const SPOTIFY_UNAVAILABLE_GRACE_MS = 5000;
 const LAST_KNOWN_SPOTIFY_TRACK_MS = 30 * 60 * 1000;
-const STATUS_EXPIRATION_MS = 120000;
-const STATUS_EXPIRATION_REFRESH_MS = 45000;
 const albumAssetCache = new Map<string, Promise<string | undefined>>();
 const albumAssetResolved = new Map<string, string | undefined>();
 const pluginAuthor = { name: "mally", id: 0n };
@@ -828,7 +825,6 @@ function forceRemoteStatus(status: string, reason: string) {
 
     debugLog(`custom status force "${status}" ${reason}`);
     lastRemoteStatusText = undefined;
-    lastRemoteStatusExpiresAt = 0;
     setRemoteStatus(status, true);
 }
 
@@ -840,8 +836,6 @@ function ensureRemoteStatusMatches(status: string) {
         forceRemoteStatus(status, `actual="${currentStatus}"`);
         return;
     }
-
-    refreshRemoteStatusExpiration(status);
 }
 
 function setProfileStatus(text: string) {
@@ -875,14 +869,6 @@ function setProfileStatus(text: string) {
         } satisfies Activity : null,
         socketId: STATUS_SOCKET_ID,
     });
-}
-
-function refreshRemoteStatusExpiration(status: string) {
-    if (!status || isWaitingStatus(status)) return;
-    if (status !== lastRemoteStatusText) return;
-    if (Date.now() + STATUS_EXPIRATION_REFRESH_MS < lastRemoteStatusExpiresAt) return;
-
-    setRemoteStatus(status);
 }
 
 function clearPendingWaitingRemoteStatus() {
@@ -928,10 +914,7 @@ async function flushRemoteStatus() {
     }
 
     const status = pendingRemoteStatusText;
-    const shouldRefreshExpiration = Boolean(status)
-        && status === lastRemoteStatusText
-        && Date.now() + STATUS_EXPIRATION_REFRESH_MS >= lastRemoteStatusExpiresAt;
-    if (status === lastRemoteStatusText && !shouldRefreshExpiration) return;
+    if (status === lastRemoteStatusText) return;
 
     remoteStatusInFlight = true;
     debugLog(`custom status update start "${status}"`);
@@ -945,13 +928,7 @@ async function flushRemoteStatus() {
 
         const expiresAtMs = getStatusSetting("statusExpiresAtMs");
         if (expiresAtMs) {
-            if (status) {
-                lastRemoteStatusExpiresAt = Date.now() + STATUS_EXPIRATION_MS;
-                await expiresAtMs.updateSetting(String(lastRemoteStatusExpiresAt));
-            } else {
-                lastRemoteStatusExpiresAt = 0;
-                await expiresAtMs.updateSetting("0");
-            }
+            await expiresAtMs.updateSetting("0");
         }
 
         const createdAtMs = getStatusSetting("statusCreatedAtMs");
@@ -1858,6 +1835,8 @@ export default definePlugin({
     start() {
         updatePluginAuthor();
         FluxDispatcher.subscribe("SPOTIFY_PLAYER_STATE", onSpotifyPlayerState);
+        window.addEventListener("beforeunload", clearStatusForShutdown);
+        window.addEventListener("pagehide", clearStatusForShutdown);
         restartTimer();
         logStatusUserSettings();
         setRemoteStatus("");
@@ -1877,6 +1856,8 @@ export default definePlugin({
         interval = undefined;
         remoteStatusTimer = undefined;
         FluxDispatcher.unsubscribe("SPOTIFY_PLAYER_STATE", onSpotifyPlayerState);
+        window.removeEventListener("beforeunload", clearStatusForShutdown);
+        window.removeEventListener("pagehide", clearStatusForShutdown);
         fetchController?.abort();
         fetchController = undefined;
         spotifyState = undefined;

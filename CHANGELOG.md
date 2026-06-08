@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5
+
+- Set lyric custom statuses to forever instead of using a timed expiration.
+- Clear DiscordLyrics status earlier when Discord is closing or unloading.
+
 ## 1.0.4
 
 - Added a Discord-styled progress window for update installs.
