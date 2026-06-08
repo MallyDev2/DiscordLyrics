@@ -494,8 +494,11 @@ try {
 
             const uiResponse = await fetch(`https://github.com/${this.repo}/releases/latest/download/DiscordLyrics-Installer.exe`);
             if (!uiResponse.ok) throw new Error(`Installer UI download returned ${uiResponse.status}`);
-            fs.writeFileSync(this.updateUiPath, Buffer.from(await uiResponse.arrayBuffer()));
-            fs.appendFileSync(this.updateLogPath, `Installer UI downloaded ${new Date().toISOString()}\n`);
+            const safeVersion = String(version || "update").replace(/[^0-9A-Za-z._-]+/g, "_");
+            const updateUiRunPath = path.join(this.stateDir, `DiscordLyrics-Installer-${safeVersion}-${Date.now()}.exe`);
+            fs.rmSync(this.updateUiPath, { force: true });
+            fs.writeFileSync(updateUiRunPath, Buffer.from(await uiResponse.arrayBuffer()));
+            fs.appendFileSync(this.updateLogPath, `Installer UI downloaded ${new Date().toISOString()} ${updateUiRunPath}\n`);
 
             const updateUiArgs = [
                 "-UpdateMode",
@@ -508,7 +511,7 @@ try {
 
             fs.appendFileSync(this.updateLogPath, `Installer UI launching ${new Date().toISOString()}\n`);
 
-            const child = spawn(this.updateUiPath, updateUiArgs, {
+            const child = spawn(updateUiRunPath, updateUiArgs, {
                 detached: true,
                 windowsHide: true,
                 stdio: "ignore"

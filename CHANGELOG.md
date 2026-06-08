@@ -4,6 +4,7 @@
 
 - Set lyric custom statuses to forever instead of using a timed expiration.
 - Clear DiscordLyrics status earlier when Discord is closing or unloading.
+- Avoid update installer file locks by launching each update from a fresh installer exe path.
 
 ## 1.0.4
 

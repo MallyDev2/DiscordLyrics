@@ -163,8 +163,11 @@ export async function installUpdate(_: IpcMainInvokeEvent, version: string, body
 
     const uiResponse = await fetch("https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.exe");
     if (!uiResponse.ok) throw new Error(`Installer UI download returned ${uiResponse.status}`);
-    await writeFile(updateUiPath, Buffer.from(await uiResponse.arrayBuffer()));
-    await writeFile(updateLogPath, `Installer UI downloaded ${new Date().toISOString()}\n`, { flag: "a" });
+    const safeVersion = String(version || "update").replace(/[^0-9A-Za-z._-]+/g, "_");
+    const updateUiRunPath = join(appDataDir, `DiscordLyrics-Installer-${safeVersion}-${Date.now()}.exe`);
+    await unlink(updateUiPath).catch(() => void 0);
+    await writeFile(updateUiRunPath, Buffer.from(await uiResponse.arrayBuffer()));
+    await writeFile(updateLogPath, `Installer UI downloaded ${new Date().toISOString()} ${updateUiRunPath}\n`, { flag: "a" });
 
     const target = ["Vencord", "Equicord", "Dorian"].includes(String(profile.target || ""))
         ? String(profile.target)
@@ -181,7 +184,7 @@ export async function installUpdate(_: IpcMainInvokeEvent, version: string, body
 
     await writeFile(updateLogPath, `Installer UI launching ${new Date().toISOString()}\n`, { flag: "a" });
 
-    const child = spawn(updateUiPath, updateUiArgs, {
+    const child = spawn(updateUiRunPath, updateUiArgs, {
         detached: true,
         windowsHide: true,
         stdio: "ignore"
