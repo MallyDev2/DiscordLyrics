@@ -381,7 +381,20 @@ internal sealed class InstallerForm : Form
         var names = new[] { "Vencord", "Equicord", "Dorian" };
 
         if (updateMode && !string.IsNullOrWhiteSpace(targetArg))
-            return new InstallPlan(targetArg, sourcePathArg, "Updating " + targetArg, DateTime.Now);
+        {
+            if (targetArg == "BetterDiscord")
+                return new InstallPlan(targetArg, "", "Updating " + targetArg, DateTime.Now);
+
+            var updateSource = sourcePathArg;
+            if (!LooksLikeSource(updateSource))
+                updateSource = sourceBox.Text.Trim();
+            if (!LooksLikeSource(updateSource))
+                updateSource = GetSourceCandidates(targetArg).FirstOrDefault();
+
+            return !string.IsNullOrWhiteSpace(updateSource)
+                ? new InstallPlan(targetArg, updateSource, "Updating " + targetArg + " at " + updateSource, DateTime.Now)
+                : new InstallPlan(targetArg, "", targetArg + " needs a source folder", DateTime.MinValue);
+        }
 
         if (selected == "Auto")
         {

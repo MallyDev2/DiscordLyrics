@@ -509,7 +509,7 @@ try {
 
             if (profile.sourcePath) updateUiArgs.push("-SourcePath", profile.sourcePath);
 
-            fs.appendFileSync(this.updateLogPath, `Installer UI launching ${new Date().toISOString()}\n`);
+            fs.appendFileSync(this.updateLogPath, `Installer UI launching ${new Date().toISOString()} ${updateUiRunPath} ${JSON.stringify(updateUiArgs)}\n`);
 
             const child = spawn(updateUiRunPath, updateUiArgs, {
                 detached: true,

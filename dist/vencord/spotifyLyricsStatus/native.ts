@@ -182,7 +182,7 @@ export async function installUpdate(_: IpcMainInvokeEvent, version: string, body
 
     if (profile.sourcePath) updateUiArgs.push("-SourcePath", profile.sourcePath);
 
-    await writeFile(updateLogPath, `Installer UI launching ${new Date().toISOString()}\n`, { flag: "a" });
+    await writeFile(updateLogPath, `Installer UI launching ${new Date().toISOString()} ${updateUiRunPath} ${JSON.stringify(updateUiArgs)}\n`, { flag: "a" });
 
     const child = spawn(updateUiRunPath, updateUiArgs, {
         detached: true,
