@@ -21,7 +21,6 @@ DiscordLyrics syncs Spotify lyrics from currently playing song to your custom st
 
 - Live lyric status from Spotify playback.
 - LRCLIB synced lyric lookup.
-- Pause fallback using the last detected track.
 - Rate-conscious status updates.
 
 ## Client Support
