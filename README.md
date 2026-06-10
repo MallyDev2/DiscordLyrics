@@ -23,15 +23,6 @@ DiscordLyrics syncs Spotify lyrics from currently playing song to your custom st
 - LRCLIB synced lyric lookup.
 - Rate-conscious status updates.
 
-## Client Support
-
-| Client | Status | Notes |
-| --- | --- | --- |
-| BetterDiscord | Supported | Uses the packaged `.plugin.js` release file. |
-| Vencord | Supported | Installs as a source userplugin and rebuilds the client. |
-| Equicord | Supported | Uses the same source userplugin layout as Vencord-style clients. |
-| Dorian | Supported | Works when the local source tree follows the Vencord plugin structure. |
-
 ## Download
 
 | Client | Release file | Setup |
@@ -80,13 +71,6 @@ DiscordLyrics/
   dist/
   assets/
 ```
-
-## Compatibility
-
-| Platform | Status |
-| --- | --- |
-| BetterDiscord | Supported |
-| Vencord userplugin | Supported |
 
 ## Support
 
