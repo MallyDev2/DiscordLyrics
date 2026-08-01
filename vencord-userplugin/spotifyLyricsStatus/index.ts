@@ -864,6 +864,7 @@ function setProfileStatus(text: string) {
             name: "Custom Status",
             state: status,
             type: ActivityType.CUSTOM_STATUS,
+            emoji: { name: "🎵" },
             flags: ActivityFlags.INSTANCE,
             created_at: Date.now()
         } satisfies Activity : null,
@@ -923,7 +924,7 @@ async function flushRemoteStatus() {
         if (!customStatus) throw new Error("status.customStatus setting was not found");
 
         if (status !== lastRemoteStatusText) {
-            await customStatus.updateSetting(status ? { text: status } : undefined);
+            await customStatus.updateSetting(status ? { text: status, emojiName: "🎵" } : undefined);
         }
 
         const expiresAtMs = getStatusSetting("statusExpiresAtMs");
