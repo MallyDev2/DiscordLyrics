@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
     rpcShowAlbumArt: true
 } as const;
 
-const RELEASE_VERSION = "1.0.5";
+const RELEASE_VERSION = "1.0.6";
 const REPO = "MallyDev2/DiscordLyrics";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const LAST_UPDATE_CHECK_KEY = "DiscordLyrics.lastUpdateCheck";

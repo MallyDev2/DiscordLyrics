@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+
+- Fix the one-click `.cmd` bootstrap installer so its work folder no longer tries to delete the running installer exe.
+
 ## 1.0.5
 
 - Set lyric custom statuses to forever instead of using a timed expiration.
