@@ -78,6 +78,6 @@ If you enjoy discordlyrics, you can support me through GitHub Sponsors:
 
 https://github.com/sponsors/MallyDev2
 
-## License
+## License [![license](https://img.shields.io/badge/license-LICENSED-green.svg)](./LICENSE.md)
 
 Released under the [GPL-3.0 License](LICENSE).
