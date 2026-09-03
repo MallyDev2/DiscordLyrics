@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
     maxStatusLength: 128,
     fontStyle: "normal",
     showWaitingDots: true,
+    statusEmoji: "🎵",
     loadingText: "loading lyrics...",
     noLyricsText: "no synced lyrics",
     pausedPrefix: "Pause - ",
@@ -571,6 +572,11 @@ const settings = definePluginSettings({
             default: option.value === DEFAULT_SETTINGS.fontStyle
         }))
     },
+    statusEmoji: {
+        type: OptionType.STRING,
+        description: "The emoji to display in your status.",
+        default: DEFAULT_SETTINGS.statusEmoji
+    },
     showWaitingDots: {
         type: OptionType.BOOLEAN,
         description: "Show dots during intros and long lyric gaps.",
@@ -864,6 +870,7 @@ function setProfileStatus(text: string) {
             name: "Custom Status",
             state: status,
             type: ActivityType.CUSTOM_STATUS,
+            emoji: { name: settings.store.statusEmoji, id: null, animated: false },
             flags: ActivityFlags.INSTANCE,
             created_at: Date.now()
         } satisfies Activity : null,
@@ -923,7 +930,11 @@ async function flushRemoteStatus() {
         if (!customStatus) throw new Error("status.customStatus setting was not found");
 
         if (status !== lastRemoteStatusText) {
-            await customStatus.updateSetting(status ? { text: status } : undefined);
+            await customStatus.updateSetting(status ? { 
+                text: status, 
+                emojiName: settings.store.statusEmoji, 
+                emojiId: null 
+            } : undefined);
         }
 
         const expiresAtMs = getStatusSetting("statusExpiresAtMs");
